@@ -20,7 +20,6 @@ import Installations from './components/Installations';
 import Projects from './components/Projects';
 import Maintenance from './components/Maintenance';
 import QualityClaims from './components/QualityClaims';
-import AIConnectionTest from './components/AIConnectionTest';
 
 
 import type { User, NavItem } from './types';
@@ -130,7 +129,6 @@ const App: React.FC = () => {
     // ... inside App component return:
     return (
         <ThemeProvider>
-            <AIConnectionTest />
             <NotificationProvider>
                 <AgentProvider>
                     <HashRouter>
