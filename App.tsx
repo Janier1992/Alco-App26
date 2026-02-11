@@ -18,6 +18,7 @@ import Calibration from './components/Calibration';
 import AgentHub from './components/AgentHub';
 import Installations from './components/Installations';
 import Projects from './components/Projects';
+import Maintenance from './components/Maintenance';
 import QualityClaims from './components/QualityClaims';
 import AIConnectionTest from './components/AIConnectionTest';
 
@@ -152,6 +153,7 @@ const App: React.FC = () => {
                                 <Route path="metrology/calibration" element={<Calibration />} />
                                 <Route path="reports" element={<Reports />} />
                                 <Route path="ops/projects" element={<Projects />} />
+                                <Route path="maintenance/board" element={<Maintenance />} />
 
                                 <Route path="installations" element={<Installations />} />
                             </Route>
