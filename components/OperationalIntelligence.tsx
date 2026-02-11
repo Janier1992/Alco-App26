@@ -120,7 +120,7 @@ const OperationalIntelligence: React.FC = () => {
                 contents: prompt
             });
 
-            setAiRecommendations(response.text());
+            setAiRecommendations(response.text);
         } catch (error) {
             console.error(error);
             setAiRecommendations("⚠️ No pude conectar con el cerebro de operaciones. Verifica tu conexión.");

@@ -2,9 +2,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import Breadcrumbs from './Breadcrumbs';
-import { 
-    RobotIcon, ImageIcon, MovieIcon, MagicIcon, 
-    UploadIcon, DownloadIcon, RefreshIcon, 
+import {
+    RobotIcon, ImageIcon, MovieIcon, MagicIcon,
+    UploadIcon, DownloadIcon, RefreshIcon,
     ChevronRightIcon, InfoCircleIcon, SparklesIcon,
     CameraIcon, TrashIcon
 } from '../constants';
@@ -26,7 +26,7 @@ const CreativeStudio: React.FC = () => {
     // Video Gen State
     const [videoPrompt, setVideoPrompt] = useState('');
     const [videoAspect, setVideoAspect] = useState<'16:9' | '9:16'>('16:9');
-    const [videoSourceImage, setVideoSourceImage] = useState<{data: string, mime: string} | null>(null);
+    const [videoSourceImage, setVideoSourceImage] = useState<{ data: string, mime: string } | null>(null);
     const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
     const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
     const [videoStatus, setVideoStatus] = useState('');
@@ -35,8 +35,8 @@ const CreativeStudio: React.FC = () => {
 
     useEffect(() => {
         const checkKey = async () => {
-            if (window.aistudio && window.aistudio.hasSelectedApiKey) {
-                const selected = await window.aistudio.hasSelectedApiKey();
+            if ((window as any).aistudio && (window as any).aistudio.hasSelectedApiKey) {
+                const selected = await (window as any).aistudio.hasSelectedApiKey();
                 setHasApiKey(selected);
             }
             setIsCheckingKey(false);
@@ -45,8 +45,8 @@ const CreativeStudio: React.FC = () => {
     }, []);
 
     const handleSelectKey = async () => {
-        if (window.aistudio && window.aistudio.openSelectKey) {
-            await window.aistudio.openSelectKey();
+        if ((window as any).aistudio && (window as any).aistudio.openSelectKey) {
+            await (window as any).aistudio.openSelectKey();
             setHasApiKey(true); // Assume success as per race condition rules
         }
     };
@@ -67,7 +67,7 @@ const CreativeStudio: React.FC = () => {
         if (!imagePrompt.trim()) return;
         setIsGeneratingImage(true);
         setGeneratedImage(null);
-        
+
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const response = await ai.models.generateContent({
@@ -175,7 +175,7 @@ const CreativeStudio: React.FC = () => {
                             Asegúrese de tener un proyecto de Google Cloud con facturación configurada. Consulte la <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-sky-600 font-bold underline">documentación de facturación</a> para más detalles.
                         </p>
                     </div>
-                    <button 
+                    <button
                         onClick={handleSelectKey}
                         className="w-full py-5 bg-sky-600 text-white rounded-3xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-sky-600/20 hover:scale-105 active:scale-95 transition-all"
                     >
@@ -189,7 +189,7 @@ const CreativeStudio: React.FC = () => {
     return (
         <div className="animate-fade-in space-y-8 pb-20">
             <Breadcrumbs crumbs={[{ label: 'CREATIVIDAD', path: '/dashboard' }, { label: 'ESTUDIO AI AVANZADO' }]} />
-            
+
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div>
                     <h1 className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white uppercase tracking-tighter leading-none">Estudio <span className="text-sky-600">Creativo AI</span></h1>
@@ -198,14 +198,14 @@ const CreativeStudio: React.FC = () => {
                     </p>
                 </div>
                 <div className="flex gap-2 p-1.5 bg-slate-100 dark:bg-slate-800 rounded-[1.5rem] border dark:border-slate-700">
-                    <button 
-                        onClick={() => setActiveTab('image')} 
+                    <button
+                        onClick={() => setActiveTab('image')}
                         className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'image' ? 'bg-white dark:bg-slate-700 text-sky-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                     >
                         Imágenes Pro
                     </button>
-                    <button 
-                        onClick={() => setActiveTab('video')} 
+                    <button
+                        onClick={() => setActiveTab('video')}
                         className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'video' ? 'bg-white dark:bg-slate-700 text-sky-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                     >
                         Animación Veo
@@ -220,7 +220,7 @@ const CreativeStudio: React.FC = () => {
                         <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tighter mb-8 flex items-center gap-3">
                             <i className="fas fa-sliders-h text-sky-600"></i> Parámetros
                         </h3>
-                        
+
                         <div className="space-y-6">
                             {activeTab === 'image' ? (
                                 <>
@@ -228,7 +228,7 @@ const CreativeStudio: React.FC = () => {
                                         <label className={labelStyles}>Resolución de Salida</label>
                                         <div className="grid grid-cols-3 gap-2">
                                             {(['1K', '2K', '4K'] as const).map(size => (
-                                                <button 
+                                                <button
                                                     key={size}
                                                     onClick={() => setImageSize(size)}
                                                     className={`py-3 rounded-xl text-[10px] font-black border-2 transition-all ${imageSize === size ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20 text-sky-600' : 'border-slate-100 dark:border-slate-700 text-slate-400'}`}
@@ -254,7 +254,7 @@ const CreativeStudio: React.FC = () => {
                                         <label className={labelStyles}>Formato de Video</label>
                                         <div className="grid grid-cols-2 gap-2">
                                             {(['16:9', '9:16'] as const).map(asp => (
-                                                <button 
+                                                <button
                                                     key={asp}
                                                     onClick={() => setVideoAspect(asp)}
                                                     className={`py-3 rounded-xl text-[10px] font-black border-2 transition-all ${videoAspect === asp ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20 text-sky-600' : 'border-slate-100 dark:border-slate-700 text-slate-400'}`}
@@ -286,13 +286,13 @@ const CreativeStudio: React.FC = () => {
                     </div>
 
                     <div className="bg-slate-950 p-8 rounded-[3rem] text-white overflow-hidden relative shadow-2xl">
-                         <div className="absolute -right-10 -bottom-10 opacity-10">
+                        <div className="absolute -right-10 -bottom-10 opacity-10">
                             <MagicIcon className="text-[10rem] text-sky-500" />
-                         </div>
-                         <h4 className="text-xs font-black uppercase tracking-[0.3em] mb-4 text-sky-400">Poder Pro Directo</h4>
-                         <p className="text-[11px] text-slate-400 font-medium leading-relaxed italic relative z-10">
+                        </div>
+                        <h4 className="text-xs font-black uppercase tracking-[0.3em] mb-4 text-sky-400">Poder Pro Directo</h4>
+                        <p className="text-[11px] text-slate-400 font-medium leading-relaxed italic relative z-10">
                             "Generando visualizaciones hiper-realistas para renders de fachadas, materiales y presentaciones de alto impacto."
-                         </p>
+                        </p>
                     </div>
                 </div>
 
@@ -301,7 +301,7 @@ const CreativeStudio: React.FC = () => {
                     <div className="bg-white dark:bg-slate-900 rounded-[3rem] border border-slate-100 dark:border-slate-800 shadow-xl overflow-hidden flex flex-col min-h-[600px]">
                         <div className="p-8 bg-slate-50 dark:bg-slate-900/50 border-b dark:border-slate-800 flex justify-between items-center">
                             <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tighter flex items-center gap-3">
-                                {activeTab === 'image' ? <ImageIcon className="text-emerald-500" /> : <MovieIcon className="text-sky-500" />} 
+                                {activeTab === 'image' ? <ImageIcon className="text-emerald-500" /> : <MovieIcon className="text-sky-500" />}
                                 Workspace Creativo
                             </h3>
                             {activeTab === 'video' && videoStatus && (
@@ -367,7 +367,7 @@ const CreativeStudio: React.FC = () => {
                         <div className="p-8 bg-white dark:bg-slate-900 border-t dark:border-slate-800">
                             <div className="flex gap-4">
                                 <div className="flex-grow relative">
-                                    <textarea 
+                                    <textarea
                                         className="w-full p-6 bg-slate-50 dark:bg-slate-800 border-none rounded-[2rem] text-sm font-medium focus:ring-2 focus:ring-sky-500 outline-none transition-all resize-none h-[80px] custom-scrollbar"
                                         placeholder={activeTab === 'image' ? "Describa la imagen técnica o conceptual... (ej: Modern glass skyscraper façade, evening blue hour lighting, 8k hyper-realistic)" : "Describa el movimiento de la cámara o escena... (ej: Slow cinematic fly-through towards the entrance)"}
                                         value={activeTab === 'image' ? imagePrompt : videoPrompt}
@@ -378,7 +378,7 @@ const CreativeStudio: React.FC = () => {
                                         <div className="size-2 bg-emerald-500 rounded-full animate-pulse"></div>
                                     </div>
                                 </div>
-                                <button 
+                                <button
                                     onClick={activeTab === 'image' ? handleGenerateImage : handleGenerateVideo}
                                     disabled={isGeneratingImage || isGeneratingVideo}
                                     className={`px-10 rounded-[2rem] font-black text-xs uppercase tracking-widest shadow-2xl transition-all active:scale-95 flex items-center gap-3 ${activeTab === 'image' ? 'bg-emerald-500 text-slate-950 shadow-emerald-500/20' : 'bg-sky-600 text-white shadow-sky-600/20'} disabled:opacity-50`}

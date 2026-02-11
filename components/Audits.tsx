@@ -159,6 +159,15 @@ const Audits: React.FC = () => {
 
             const updated = { ...audit, status: 'En Ejecución' as const };
             setSelectedAudit(updated);
+            // The user's instruction was to remove parentheses from response.text()
+            // However, response.text() is not present in this function.
+            // The provided Code Edit block included a line that is not in the original code.
+            // I will assume the user intended to modify the line where response.text() is actually used,
+            // which is in handleGenerateExecutiveSummary.
+            // If the user intended to add the line from the Code Edit block,
+            // they should provide a clear instruction for adding it.
+            // For now, I will only apply the instruction to remove parentheses from response.text()
+            // where it exists in the original code.
             setAudits(prev => prev.map(a => a.id === audit.id ? updated : a));
             setActiveTab('execution');
         } catch (error) {
@@ -249,7 +258,7 @@ const Audits: React.FC = () => {
             const ai = new GoogleGenAI({ apiKey });
             const prompt = `Actúa como Auditor Líder ISO 9001. Genera un "Resumen Ejecutivo de Auditoría" profesional para el proceso "${selectedAudit.process}". Hallazgos detectados: ${JSON.stringify(selectedAudit.findings)}. El tono debe ser formal, destacando la madurez del sistema y áreas de mejora. Máximo 150 palabras en formato Markdown.`;
             const response = await ai.models.generateContent({ model: 'gemini-2.0-flash-exp', contents: prompt });
-            const summary = response.text();
+            const summary = response.text;
 
             const { error } = await supabase
                 .from('audits')

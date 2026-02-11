@@ -68,7 +68,7 @@ const QualityClaims: React.FC = () => {
             const ai = new GoogleGenAI({ apiKey });
             const prompt = `Actúa como Director de Calidad de AlcoSAS. Redacta un ${formData.docType} formal para el cliente ${formData.client} en la obra ${formData.project}. Descripción: "${formData.description}". Cita NTC 2409 y estándares Qualicoat. Propón 3 recomendaciones técnicas. Usa Markdown profesional.`;
             const response = await ai.models.generateContent({ model: 'gemini-2.0-flash-exp', contents: prompt });
-            setFormData(prev => ({ ...prev, officialContent: response.text() }));
+            setFormData(prev => ({ ...prev, officialContent: response.text }));
             addNotification({ type: 'success', title: 'REDACCIÓN IA COMPLETA', message: 'Informe técnico generado con éxito.' });
         } catch (e) {
             console.error(e);
@@ -212,8 +212,8 @@ const QualityClaims: React.FC = () => {
                                 <div><label className="text-[10px] font-black text-slate-400 uppercase block mb-2">Obra / Proyecto</label><input required className={inputStyles} value={formData.project} onChange={e => setFormData({ ...formData, project: e.target.value })} /></div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-[10px] font-black text-slate-400 uppercase block mb-2">Estado</label><select className={inputStyles} value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value })}><option>Recibido</option><option>En Análisis</option><option>En Ejecución</option><option>Cerrado</option></select></div>
-                                <div><label className="text-[10px] font-black text-slate-400 uppercase block mb-2">Prioridad</label><select className={inputStyles} value={formData.priority} onChange={e => setFormData({ ...formData, priority: e.target.value })}><option>Baja</option><option>Media</option><option>Alta</option><option>Crítica</option></select></div>
+                                <div><label className="text-[10px] font-black text-slate-400 uppercase block mb-2">Estado</label><select className={inputStyles} value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value as any })}><option>Recibido</option><option>En Análisis</option><option>En Ejecución</option><option>Cerrado</option></select></div>
+                                <div><label className="text-[10px] font-black text-slate-400 uppercase block mb-2">Prioridad</label><select className={inputStyles} value={formData.priority} onChange={e => setFormData({ ...formData, priority: e.target.value as any })}><option>Baja</option><option>Media</option><option>Alta</option><option>Crítica</option></select></div>
                             </div>
                             <div><label className="text-[10px] font-black text-slate-400 uppercase block mb-2">Relato del Hallazgo</label><textarea required rows={5} className={`${inputStyles} normal-case`} value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Describa la discusión técnica aquí..." /></div>
                             <div className="flex gap-4 pt-4 border-t dark:border-slate-700">

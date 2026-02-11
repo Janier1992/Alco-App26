@@ -7,7 +7,7 @@ import { MOCK_WASTE_DATA } from '../constants';
 const COLORS = ['#0ea5e9', '#ef4444', '#22c55e', '#64748b'];
 
 const Environment: React.FC = () => {
-    
+
     // Aggregate data for charts
     const dataByType = MOCK_WASTE_DATA.reduce((acc, curr) => {
         const existing = acc.find(item => item.name === curr.type);
@@ -17,7 +17,7 @@ const Environment: React.FC = () => {
             acc.push({ name: curr.type, value: curr.quantityKg });
         }
         return acc;
-    }, [] as {name: string, value: number}[]);
+    }, [] as { name: string, value: number }[]);
 
     return (
         <div className="space-y-6">
@@ -39,12 +39,12 @@ const Environment: React.FC = () => {
                     <p className="text-3xl font-bold text-slate-800 dark:text-slate-100">975 kg</p>
                     <p className="text-xs text-emerald-600 mt-1">▼ 5% vs mes anterior</p>
                 </div>
-                 <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border-l-4 border-sky-500">
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border-l-4 border-sky-500">
                     <p className="text-sm text-slate-500 mb-1">% Valorización</p>
                     <p className="text-3xl font-bold text-slate-800 dark:text-slate-100">85.1%</p>
-                    <p className="text-xs text-slate-400 mt-1">Meta: >80%</p>
+                    <p className="text-xs text-slate-400 mt-1">Meta: &gt;80%</p>
                 </div>
-                 <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border-l-4 border-red-500">
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border-l-4 border-red-500">
                     <p className="text-sm text-slate-500 mb-1">Residuos Peligrosos</p>
                     <p className="text-3xl font-bold text-slate-800 dark:text-slate-100">25 kg</p>
                     <p className="text-xs text-slate-400 mt-1">Disp. final certificada</p>
@@ -55,7 +55,7 @@ const Environment: React.FC = () => {
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm">
                     <h3 className="font-bold text-slate-800 dark:text-slate-200 mb-6">Distribución por Tipo</h3>
                     <div className="h-72">
-                         <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie
                                     data={dataByType}
@@ -66,36 +66,36 @@ const Environment: React.FC = () => {
                                     fill="#8884d8"
                                     paddingAngle={5}
                                     dataKey="value"
-                                    label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                                 >
                                     {dataByType.map((entry, index) => (
                                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                     ))}
                                 </Pie>
-                                <Tooltip contentStyle={{backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff'}}/>
+                                <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff' }} />
                             </PieChart>
                         </ResponsiveContainer>
                     </div>
                 </div>
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm">
                     <h3 className="font-bold text-slate-800 dark:text-slate-200 mb-6">Histórico de Generación (kg)</h3>
-                     <div className="h-72">
+                    <div className="h-72">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart
                                 data={[
-                                    {name: 'Ene', val: 800}, {name: 'Feb', val: 950}, {name: 'Mar', val: 900},
-                                    {name: 'Abr', val: 850}, {name: 'May', val: 1100}, {name: 'Jun', val: 975}
+                                    { name: 'Ene', val: 800 }, { name: 'Feb', val: 950 }, { name: 'Mar', val: 900 },
+                                    { name: 'Abr', val: 850 }, { name: 'May', val: 1100 }, { name: 'Jun', val: 975 }
                                 ]}
-                                margin={{top: 5, right: 30, left: 20, bottom: 5}}
+                                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                             >
                                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                                 <XAxis dataKey="name" stroke="#94a3b8" />
                                 <YAxis stroke="#94a3b8" />
-                                <Tooltip contentStyle={{backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff'}} cursor={{fill: 'rgba(255,255,255,0.05)'}} />
+                                <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff' }} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
                                 <Bar dataKey="val" fill="#10b981" radius={[4, 4, 0, 0]} />
                             </BarChart>
                         </ResponsiveContainer>
-                     </div>
+                    </div>
                 </div>
             </div>
 
