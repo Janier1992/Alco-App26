@@ -6,6 +6,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   return {
+    base: '/Alco-App26/',
     server: {
       port: 3000,
       host: '0.0.0.0',
@@ -23,8 +24,8 @@ export default defineConfig(({ mode }) => {
           background_color: '#0b0b14',
           display: 'standalone',
           orientation: 'portrait',
-          scope: '/',
-          start_url: '/',
+          scope: '/Alco-App26/',
+          start_url: '/Alco-App26/',
           icons: [
             {
               src: 'icon.svg',
