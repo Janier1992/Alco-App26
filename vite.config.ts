@@ -13,9 +13,7 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       react(),
-      react(),
       // VitePWA({...}) // DISABLED FOR DEBUGGING
-    ],
     ],
     define: {
       'process.env.API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY),
