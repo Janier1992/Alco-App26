@@ -1,14 +1,14 @@
 
 import React, { useState, useMemo } from 'react';
-import { 
-    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
+import {
+    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
     ResponsiveContainer, Cell, AreaChart, Area, LineChart, Line,
     PieChart, Pie
 } from 'recharts';
 import { GoogleGenAI } from "@google/genai";
-import { 
-    MOCK_CHART_DATA, FileAltIcon, ChartLineIcon, RefreshIcon, 
-    RobotIcon, CheckCircleIcon, ExclamationTriangleIcon, 
+import {
+    MOCK_CHART_DATA, FileAltIcon, ChartLineIcon, RefreshIcon,
+    RobotIcon, CheckCircleIcon, ExclamationTriangleIcon,
     ClipboardCheckIcon, DownloadIcon, SearchIcon,
     ChevronRightIcon, InfoCircleIcon
 } from '../constants';
@@ -26,7 +26,7 @@ const ReportGenerator: React.FC = () => {
         dateRange: 'last30',
         area: 'all'
     });
-    
+
     // Estado del Reporte Generado (Data de BI)
     const [biData, setBiData] = useState<any>(null);
 
@@ -36,7 +36,7 @@ const ReportGenerator: React.FC = () => {
     const handleGenerateReport = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!reportParams.reportType) return addNotification({ type: 'warning', title: 'REPORTE INCOMPLETO', message: 'Seleccione un tipo de análisis estratégico.' });
-        
+
         setIsGenerating(true);
         addNotification({ type: 'info', title: 'PROCESANDO BI', message: 'Sincronizando KPIs de Calidad, Auditorías y CAPA...' });
 
@@ -55,7 +55,7 @@ const ReportGenerator: React.FC = () => {
             Estructura: 1. Resumen Gerencial, 2. Análisis de Riesgos en ${mockContext.topProcess}, 3. Tres Recomendaciones de Mejora Continua. Usa Markdown profesional.`;
 
             const response = await ai.models.generateContent({
-                model: 'gemini-3-flash-preview',
+                model: 'gemini-2.0-flash',
                 contents: prompt
             });
 
@@ -87,11 +87,11 @@ const ReportGenerator: React.FC = () => {
                     <p className="text-slate-500 font-bold mt-2 uppercase text-xs tracking-widest flex items-center gap-2"><ChartLineIcon /> Consolidación Estratégica de Planta</p>
                 </div>
             </div>
-            
+
             <form onSubmit={handleGenerateReport} className="bg-white dark:bg-slate-800/40 p-10 rounded-[3.5rem] border border-slate-100 dark:border-white/5 shadow-xl grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6 items-end">
                 <div>
                     <label className={labelStyles}>Tipo de Reporte</label>
-                    <select value={reportParams.reportType} onChange={e => setReportParams(p => ({...p, reportType: e.target.value}))} required className={inputStyles}>
+                    <select value={reportParams.reportType} onChange={e => setReportParams(p => ({ ...p, reportType: e.target.value }))} required className={inputStyles}>
                         <option value="">SELECCIONE...</option>
                         <option value="calidad">Análisis de Calidad ISO 9001</option>
                         <option value="auditoria">Resumen de Auditorías</option>
@@ -99,17 +99,17 @@ const ReportGenerator: React.FC = () => {
                         <option value="operativo">Desempeño Operativo Planta</option>
                     </select>
                 </div>
-                 <div>
+                <div>
                     <label className={labelStyles}>Rango de Datos</label>
-                    <select value={reportParams.dateRange} onChange={e => setReportParams(p => ({...p, dateRange: e.target.value}))} className={inputStyles}>
+                    <select value={reportParams.dateRange} onChange={e => setReportParams(p => ({ ...p, dateRange: e.target.value }))} className={inputStyles}>
                         <option value="last30">Últimos 30 días</option>
                         <option value="last90">Último Trimestre</option>
                         <option value="year">Anual Consolidado</option>
                     </select>
                 </div>
-                 <div>
+                <div>
                     <label className={labelStyles}>Área de Interés</label>
-                    <select value={reportParams.area} onChange={e => setReportParams(p => ({...p, area: e.target.value}))} className={inputStyles}>
+                    <select value={reportParams.area} onChange={e => setReportParams(p => ({ ...p, area: e.target.value }))} className={inputStyles}>
                         <option value="all">Toda la Planta</option>
                         <option value="Corte">Corte Aluminio</option>
                         <option value="Pintura">Planta Pintura</option>
@@ -117,8 +117,8 @@ const ReportGenerator: React.FC = () => {
                     </select>
                 </div>
                 <div>
-                    <button 
-                        type="submit" 
+                    <button
+                        type="submit"
                         disabled={isGenerating}
                         className={`w-full py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all shadow-xl flex items-center justify-center gap-3 ${isGenerating ? 'bg-slate-100 text-slate-400' : 'bg-sky-600 text-white hover:scale-105 active:scale-95 shadow-sky-600/20'}`}
                     >
@@ -151,12 +151,12 @@ const ReportGenerator: React.FC = () => {
 
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                         <div className="lg:col-span-8 bg-white dark:bg-slate-800 p-12 rounded-[4rem] shadow-xl border border-slate-100 dark:border-slate-700">
-                             <h3 className="text-2xl font-black uppercase tracking-tighter mb-10 flex items-center gap-4 text-sky-600"><RobotIcon /> Análisis Estratégico IA</h3>
-                             <div className="prose prose-sm dark:prose-invert max-w-none text-slate-700 dark:text-slate-300 font-medium leading-relaxed"><ReactMarkdown>{biData.analysis}</ReactMarkdown></div>
-                             <div className="mt-12 pt-8 border-t dark:border-slate-700 flex justify-between items-center text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                            <h3 className="text-2xl font-black uppercase tracking-tighter mb-10 flex items-center gap-4 text-sky-600"><RobotIcon /> Análisis Estratégico IA</h3>
+                            <div className="prose prose-sm dark:prose-invert max-w-none text-slate-700 dark:text-slate-300 font-medium leading-relaxed"><ReactMarkdown>{biData.analysis}</ReactMarkdown></div>
+                            <div className="mt-12 pt-8 border-t dark:border-slate-700 flex justify-between items-center text-[10px] font-black text-slate-400 uppercase tracking-widest">
                                 <span>Reporte generado el: {biData.timestamp}</span>
                                 <button onClick={() => window.print()} className="flex items-center gap-2 hover:text-sky-600 transition-colors"><DownloadIcon /> Exportar Copia Controlada PDF</button>
-                             </div>
+                            </div>
                         </div>
                         <div className="lg:col-span-4 space-y-6">
                             <div className="bg-slate-950 p-10 rounded-[3rem] text-white shadow-2xl relative overflow-hidden group">

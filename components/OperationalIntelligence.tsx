@@ -1,13 +1,15 @@
 
 import React, { useState } from 'react';
 import Breadcrumbs from './Breadcrumbs';
-import { 
+import {
     MOCK_SUPERVISOR_TASKS, MOCK_INSIGHTS,
-    CheckCircleIcon, ExclamationTriangleIcon, ClipboardListIcon, 
+    CheckCircleIcon, ExclamationTriangleIcon, ClipboardListIcon,
     BrainIcon, LightbulbIcon, GraduationCapIcon, ChevronRightIcon,
     RobotIcon
 } from '../constants';
 import type { SupervisorTask, OperationalInsight } from '../types';
+import { GoogleGenAI } from "@google/genai";
+import ReactMarkdown from 'react-markdown';
 
 const PriorityBadge: React.FC<{ priority: string }> = ({ priority }) => {
     const styles = {
@@ -48,14 +50,43 @@ const ISOCard: React.FC<{ reference: SupervisorTask['isoReference'], onClose: ()
     </div>
 );
 
+
+
+// ... (existing imports)
+
 const OperationalIntelligence: React.FC = () => {
     const [tasks, setTasks] = useState(MOCK_SUPERVISOR_TASKS);
     const [selectedISO, setSelectedISO] = useState<SupervisorTask['isoReference'] | null>(null);
     const [score, setScore] = useState(78); // Gamified Score
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [aiRecommendations, setAiRecommendations] = useState<string | null>(null);
 
     const handleCompleteTask = (id: string) => {
         setTasks(prev => prev.map(t => t.id === id ? { ...t, status: 'Done' } : t));
         setScore(prev => Math.min(100, prev + 5)); // Reward
+    };
+
+    const generateAiInsights = async () => {
+        setIsGenerating(true);
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const pendingParams = tasks.filter(t => t.status === 'Pending').map(t => t.title).join(', ');
+            const prompt = `Actúa como Supervisor Senior de Calidad. Tengo un Score de Cumplimiento de ${score}/100.
+            Tareas pendientes críticas: ${pendingParams}.
+            Genera 3 recomendaciones operativas tácticas (muy breves y directas) para mejorar el turno.
+            Usa formato Markdown con viñetas.`;
+
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.0-flash',
+                contents: prompt
+            });
+
+            setAiRecommendations(response.text);
+        } catch (error) {
+            setAiRecommendations("⚠️ No pude conectar con el cerebro de operaciones. Verifica tu conexión.");
+        } finally {
+            setIsGenerating(false);
+        }
     };
 
     const pendingTasks = tasks.filter(t => t.status === 'Pending');
@@ -74,7 +105,7 @@ const OperationalIntelligence: React.FC = () => {
                         Tu asistente personal para priorizar, corregir y aprender. Mantén el orden operativo alineado con la norma.
                     </p>
                 </div>
-                
+
                 {/* Gamified Score Card */}
                 <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex items-center gap-4">
                     <div className="relative w-16 h-16">
@@ -120,7 +151,7 @@ const OperationalIntelligence: React.FC = () => {
                                 <div key={task.id} className={`p-4 m-2 rounded-lg border transition-all ${task.status === 'Done' ? 'bg-slate-50 dark:bg-slate-900/50 border-slate-100 dark:border-slate-800 opacity-60' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 hover:shadow-md'}`}>
                                     <div className="flex justify-between items-start">
                                         <div className="flex gap-4">
-                                            <button 
+                                            <button
                                                 onClick={() => handleCompleteTask(task.id)}
                                                 disabled={task.status === 'Done'}
                                                 className={`mt-1 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${task.status === 'Done' ? 'bg-green-500 border-green-500 text-white' : 'border-slate-300 hover:border-green-500'}`}
@@ -133,9 +164,9 @@ const OperationalIntelligence: React.FC = () => {
                                                     <PriorityBadge priority={task.priority} />
                                                 </div>
                                                 <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">{task.description}</p>
-                                                
+
                                                 {/* Educational Micro-Interaction */}
-                                                <button 
+                                                <button
                                                     onClick={() => setSelectedISO(task.isoReference || null)}
                                                     className="text-xs flex items-center gap-1 text-sky-600 dark:text-sky-400 font-medium hover:underline bg-sky-50 dark:bg-sky-900/30 px-2 py-1 rounded w-fit"
                                                 >
@@ -173,7 +204,7 @@ const OperationalIntelligence: React.FC = () => {
                                         <span className="text-[10px] bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded text-slate-500">{insight.frequency}</span>
                                     </div>
                                     <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">{insight.description}</p>
-                                    
+
                                     <div className="bg-blue-50 dark:bg-blue-900/20 p-2 rounded text-xs text-blue-800 dark:text-blue-200 flex gap-2">
                                         <i className="fas fa-info-circle mt-0.5"></i>
                                         <span>{insight.correction}</span>
@@ -184,19 +215,31 @@ const OperationalIntelligence: React.FC = () => {
                     </div>
 
                     <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
-                        <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
-                            <RobotIcon /> Recomendaciones IA
-                        </h2>
-                        <ul className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
-                            <li className="flex gap-2">
-                                <i className="fas fa-arrow-right text-sky-500 mt-1"></i>
-                                Revisa el checklist de la Troqueladora T1, ha fallado 2 días seguidos.
-                            </li>
-                            <li className="flex gap-2">
-                                <i className="fas fa-arrow-right text-sky-500 mt-1"></i>
-                                Hay 3 operarios nuevos en Ensamble, programa una inspección de refuerzo (ISO 7.2).
-                            </li>
-                        </ul>
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                                <RobotIcon /> Recomendaciones IA
+                            </h2>
+                            <button
+                                onClick={generateAiInsights}
+                                disabled={isGenerating}
+                                className={`text-[10px] uppercase font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-2 ${isGenerating ? 'bg-slate-100 text-slate-400' : 'bg-sky-50 text-sky-600 hover:bg-sky-100'}`}
+                            >
+                                {isGenerating ? <div className="w-3 h-3 rounded-full border-2 border-slate-400 border-t-transparent animate-spin"></div> : <BrainIcon className="w-3 h-3" />}
+                                {isGenerating ? 'Analizando...' : 'Generar'}
+                            </button>
+                        </div>
+                        {aiRecommendations ? (
+                            <div className="prose prose-sm dark:prose-invert text-xs text-slate-600 dark:text-slate-300">
+                                <ReactMarkdown>{aiRecommendations}</ReactMarkdown>
+                            </div>
+                        ) : (
+                            <ul className="space-y-3 text-sm text-slate-600 dark:text-slate-300 opacity-60">
+                                <li className="flex gap-2">
+                                    <i className="fas fa-arrow-right mt-1"></i>
+                                    Solicita un análisis inteligente para ver recomendaciones personalizadas basadas en tus tareas pendientes.
+                                </li>
+                            </ul>
+                        )}
                     </div>
                 </div>
             </div>
