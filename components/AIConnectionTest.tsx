@@ -43,26 +43,37 @@ const AIConnectionTest: React.FC = () => {
     };
 
     return (
-        <div className="fixed top-20 left-20 z-[9999] bg-white text-black p-6 border-4 border-red-500 rounded-xl shadow-2xl w-96 font-mono text-xs">
-            <h1 className="text-xl font-bold mb-4 bg-red-100 p-2">DIAGNÓSTICO DE IA</h1>
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+            <div className="bg-white text-black p-8 border-8 border-red-600 rounded-3xl shadow-2xl w-[500px] font-mono text-sm relative animate-pulse">
+                <button
+                    onClick={() => setStatus('CERRADO')}
+                    className="absolute top-2 right-2 text-red-500 font-bold border border-red-500 px-2 rounded hover:bg-red-50"
+                >
+                    CERRAR DIAGNÓSTICO
+                </button>
 
-            <button
-                onClick={testConnection}
-                className="w-full bg-blue-600 text-white p-3 rounded font-bold hover:bg-blue-700 mb-4"
-            >
-                PROBAR CONEXIÓN AHORA
-            </button>
+                {status === 'CERRADO' ? null : (
+                    <>
+                        <h1 className="text-2xl font-black mb-6 bg-red-100 p-4 text-center text-red-700 uppercase tracking-widest">
+                            ⚠️ MODO DIAGNÓSTICO ACTIVO ⚠️
+                        </h1>
 
-            <div className="font-bold mb-2">Estado: {status}</div>
+                        <button
+                            onClick={testConnection}
+                            className="w-full bg-blue-600 text-white p-4 rounded-xl font-black text-lg hover:bg-blue-700 mb-6 shadow-lg transform transition-transform active:scale-95"
+                        >
+                            INICIAR PRUEBA DE CONEXIÓN
+                        </button>
 
-            <div className="bg-gray-100 p-2 h-48 overflow-y-auto border border-gray-300">
-                {logs.map((log, i) => (
-                    <div key={i} className="border-b border-gray-200 py-1">{log}</div>
-                ))}
-            </div>
+                        <div className="font-bold mb-2 text-lg">Estado: <span className="text-blue-600">{status}</span></div>
 
-            <div className="mt-4 text-gray-500 text-[10px]">
-                Build ID: {Date.now()}
+                        <div className="bg-gray-50 p-4 h-64 overflow-y-auto border-2 border-gray-200 rounded-xl font-mono text-xs">
+                            {logs.map((log, i) => (
+                                <div key={i} className="border-b border-gray-200 py-1.5">{log}</div>
+                            ))}
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );
