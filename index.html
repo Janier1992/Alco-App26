@@ -1,0 +1,75 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PROYECTOS CALIDAD</title>
+    <meta name="description" content="Gestión de Calidad y Proyectos - App Alco">
+    <meta name="theme-color" content="#0b0b14">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="mask-icon" href="/masked-icon.svg" color="#0b0b14">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        alco: {
+                            purple: '#5d5fef',
+                            dark: '#0b0b14',
+                            surface: '#1a1a24'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800;900&display=swap" rel="stylesheet" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "recharts": "https://aistudiocdn.com/recharts@^3.1.2",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.8.2",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "react-markdown": "https://aistudiocdn.com/react-markdown@^10.1.0"
+  }
+}
+</script>
+<style>
+    body {
+        font-family: 'Inter', sans-serif;
+        transition: background-color 0.4s ease, color 0.4s ease;
+    }
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #5d5fef33; border-radius: 10px; }
+    
+    .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #2d2d3d; }
+
+    /* Estilos base para modo claro premium */
+    html:not(.dark) body {
+        background-color: #f8fafc;
+        color: #0f172a;
+    }
+</style>
+<script>
+    (function() {
+      const theme = localStorage.getItem('theme') || 'dark';
+      if (theme === 'dark') document.documentElement.classList.add('dark');
+      else document.documentElement.classList.remove('dark');
+    })();
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-slate-50 dark:bg-alco-dark text-slate-900 dark:text-white">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+</body>
+</html>
