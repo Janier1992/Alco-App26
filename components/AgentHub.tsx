@@ -56,7 +56,7 @@ const getContextFromPath = (path: string): string => {
 };
 
 const getSystemContext = (useSearch: boolean, currentPath: string, persona: AgentPersona = 'Global') => {
-    const baseContext = `Eres "Quality Copilot", el Sistema Inteligente de Alco. CONTEXTO ACTUAL: ${getContextFromPath(currentPath)}`;
+    const baseContext = `Eres "Agente Calidad", el Sistema Inteligente de Alco. CONTEXTO ACTUAL: ${getContextFromPath(currentPath)}`;
 
     const personaPrompts: Record<AgentPersona, string> = {
         Global: `
@@ -110,7 +110,7 @@ const AgentHub: React.FC = () => {
     const [input, setInput] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [messages, setMessages] = useState<AgentMessage[]>([
-        { id: 'welcome', role: 'agent', content: 'Hola. Soy Quality Copilot v5.0. Analizo procesos, predigo riesgos y te asisto con la normativa. ¿En qué trabajamos hoy?' }
+        { id: 'welcome', role: 'agent', content: 'Hola. Soy Agente Calidad v5.0. Analizo procesos, predigo riesgos y te asisto con la normativa. ¿En qué trabajamos hoy?' }
     ]);
     const [groundingSources, setGroundingSources] = useState<any[]>([]);
     const [attachedImage, setAttachedImage] = useState<{ data: string, mime: string } | null>(null);
@@ -177,7 +177,7 @@ const AgentHub: React.FC = () => {
             }
 
             const response = await ai.models.generateContent({
-                model: 'gemini-1.5-flash', // Stable model for text
+                model: 'gemini-2.0-flash-exp', // Stable model for text
                 contents: { parts },
                 config: {
                     systemInstruction: getSystemContext(useGoogleSearch, location.pathname, activeAgent),
@@ -306,7 +306,7 @@ const AgentHub: React.FC = () => {
                                     <SparklesIcon />
                                 </div>
                                 <div>
-                                    <h3 className="font-black text-sm uppercase tracking-wide">Quality Copilot</h3>
+                                    <h3 className="font-black text-sm uppercase tracking-wide">Agente Calidad</h3>
                                     <p className="text-[10px] text-indigo-100 opacity-90 font-medium">{voiceStatus === 'connected' ? '🎙️ Voz Activa' : '🟢 Sistema Online'}</p>
                                 </div>
                             </div>
@@ -415,7 +415,7 @@ const AgentHub: React.FC = () => {
                                 </div>
                                 <div>
                                     <p className="text-lg font-bold dark:text-white">{isSpeaking ? 'Escuchando Voz...' : 'Modo Conversación'}</p>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-[200px] mx-auto">Habla naturalmente. El Copilot puede escucharte y responder con voz de alta fidelidad.</p>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-[200px] mx-auto">Habla naturalmente. El Agente puede escucharte y responder con voz de alta fidelidad.</p>
                                 </div>
                                 <button onClick={voiceStatus === 'connected' ? stopVoiceSession : startVoiceSession} className={`px-6 py-3 rounded-full font-bold text-xs shadow-lg transition-transform active:scale-95 ${voiceStatus === 'connected' ? 'bg-rose-500 text-white' : 'bg-[#5d5fef] text-white hover:bg-[#4f46e5]'}`}>
                                     {voiceStatus === 'connected' ? 'Desconectar Voz' : 'Iniciar Sesión de Voz'}
