@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import type { Column, Task, Priority, Attachment, TaskComment, UserAvatar, Label, ChecklistItem } from '../types';
 import Breadcrumbs from './Breadcrumbs';
@@ -9,6 +8,8 @@ import {
     BellIcon, RobotIcon, FolderOpenIcon
 } from '../constants';
 import { useNotification } from './NotificationSystem';
+import { supabase } from '../supabaseClient';
+import BulkUploadButton from './BulkUploadButton';
 
 // Componente de Popover Reutilizable
 const Popover: React.FC<{
@@ -218,35 +219,121 @@ const Projects: React.FC = () => {
     const [commentText, setCommentText] = useState('');
     const [newChecklistItem, setNewChecklistItem] = useState('');
 
-    const [columns, setColumns] = useState<{ [key: string]: Column }>({
-        'identified': {
-            id: 'identified',
-            title: 'Identificadas',
-            tasks: [
-                { id: 'NC-24-089', title: 'CATALOGO PERFILERIA 22/06/2022', priority: 'Crítica', description: 'ADJUNTO CATALOGO DE PERFILERIA COMPARTIDO POR DISEÑO PARA VALIDACIÓN DE ESPESORES.', dueDate: '2024-08-10', labels: [{ id: '1', name: 'CALIDAD', color: 'red' }], assignedUsers: [{ id: 'u1', initials: 'JP' }, { id: 'u4', initials: 'JM' }], attachments: [{ id: 'a1', name: 'CATALOGO PERFILERIA.PDF', size: 1024, type: 'application/pdf', url: '#' }], comments: [{ id: 'c1', author: 'Edwin Bedoya', text: '@board favor revisar las nuevas cotas de pintura', date: '22 jun 2022' }], checklist: [{ id: 'cl1', text: 'Verificar espesor pintura', completed: true }, { id: 'cl2', text: 'Validar con ingeniería', completed: false }] },
-                { id: 'NC-24-092', title: 'PLANOS FACHADA TORRE A', priority: 'Alta', description: 'Revision final de despieces antes del envío a planta 2.', dueDate: '2024-08-12', labels: [{ id: '2', name: 'PLANTA', color: 'blue' }], assignedUsers: [{ id: 'u2', initials: 'MR' }], attachments: [], comments: [], checklist: [] }
-            ]
-        },
-        'analysis': {
-            id: 'analysis',
-            title: 'Análisis (RCA)',
-            tasks: [
-                { id: 'NC-24-075', title: 'FALLO SOFTWARE ETIQUETADO L4.', priority: 'Media', description: 'Investigando logs de sistema para detectar por qué se pierden las órdenes de producción.', dueDate: '2024-08-05', labels: [{ id: '3', name: 'URGENTE', color: 'orange' }], assignedUsers: [{ id: 'u3', initials: 'CR' }], attachments: [], comments: [] }
-            ]
-        },
-        'plan': {
-            id: 'plan',
-            title: 'Plan de Acción',
-            tasks: [
-                { id: 'CAPA-24-012', title: 'RE-ENTRENAMIENTO PERSONAL SALA LIMPIA.', priority: 'Alta', description: 'Capacitación obligatoria tras hallazgo en auditoría cruzada de Q2.', dueDate: '2024-09-01', labels: [{ id: '1', name: 'CALIDAD', color: 'red' }], assignedUsers: [{ id: 'u1', initials: 'JP' }], attachments: [], comments: [] }
-            ]
-        },
-        'verification': {
-            id: 'verification',
-            title: 'Verificación',
-            tasks: []
+    const [columns, setColumns] = useState<{ [key: string]: Column }>({});
+    const [boardId, setBoardId] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    const loadRef = useRef(false);
+
+    // Initial Data Fetch
+    useEffect(() => {
+        if (loadRef.current) return;
+        loadRef.current = true;
+        fetchBoardData();
+    }, []);
+
+    const fetchBoardData = async () => {
+        try {
+            setLoading(true);
+            // 1. Get Board ID for 'projects'
+            const { data: boardData, error: boardError } = await supabase
+                .from('boards')
+                .select('id')
+                .eq('type', 'projects')
+                .single();
+
+            if (boardError || !boardData) {
+                console.error("Board not found:", boardError);
+                return;
+            }
+
+            setBoardId(boardData.id);
+
+            // 2. Get Columns
+            const { data: colsData, error: colsError } = await supabase
+                .from('board_columns')
+                .select('*')
+                .eq('board_id', boardData.id)
+                .order('position');
+
+            if (colsError) throw colsError;
+
+            // If no columns, create defaults
+            let finalColumns = colsData || [];
+            if (finalColumns.length === 0) {
+                const defaults = ['Identificadas', 'Análisis (RCA)', 'Plan de Acción', 'Verificación'];
+                for (let i = 0; i < defaults.length; i++) {
+                    const { data, error } = await supabase.from('board_columns').insert({
+                        board_id: boardData.id,
+                        title: defaults[i],
+                        position: i
+                    }).select().single();
+                    if (data) finalColumns.push(data);
+                }
+            }
+
+            // 3. Get Tasks for this board's columns
+            // We need to fetch tasks that belong to these columns.
+            // A simpler way is to fetch tasks where column_id is in our list of column IDs.
+            const colIds = finalColumns.map(c => c.id);
+            const { data: tasksData, error: tasksError } = await supabase
+                .from('board_tasks')
+                .select(`
+                    *,
+                    labels:task_labels(*),
+                    assignedUsers:task_assignees(*),
+                    checklist:task_checklists(*),
+                    attachments:task_attachments(*),
+                    comments:task_comments(*)
+                `)
+                .in('column_id', colIds)
+                .order('position');
+
+            if (tasksError) throw tasksError;
+
+            // 4. Map to Frontend Structure
+            const newColumnsState: { [key: string]: Column } = {};
+            finalColumns.forEach(col => {
+                const colTasks = tasksData?.filter(t => t.column_id === col.id).map(t => ({
+                    id: t.id,
+                    title: t.title,
+                    description: t.description || '',
+                    priority: t.priority as Priority,
+                    dueDate: t.due_date,
+                    // Map joined tables
+                    labels: t.labels || [],
+                    assignedUsers: t.assignedUsers?.map((u: any) => ({
+                        id: u.user_id || u.id, // Handle if we have user_id or just an id
+                        initials: u.user_initials || '??'
+                    })) || [],
+                    checklist: t.checklist || [],
+                    attachments: t.attachments || [],
+                    comments: t.comments?.map((c: any) => ({
+                        id: c.id,
+                        author: c.author_name || 'Desconocido',
+                        text: c.content,
+                        date: new Date(c.created_at).toLocaleDateString()
+                    })) || [],
+                    assetId: t.asset_id,
+                    type: t.maintenance_type
+                })) || [];
+
+                newColumnsState[col.id] = {
+                    id: col.id,
+                    title: col.title,
+                    tasks: colTasks
+                };
+            });
+
+            setColumns(newColumnsState);
+
+        } catch (error) {
+            console.error(error);
+            addNotification({ type: 'error', title: 'Error de Conexión', message: 'No se pudieron cargar los datos del tablero.' });
+        } finally {
+            setLoading(false);
         }
-    });
+    };
 
     const handleDragStart = (e: React.DragEvent, taskId: string, sourceColId: string) => {
         e.dataTransfer.setData("taskId", taskId);
@@ -261,26 +348,32 @@ const Projects: React.FC = () => {
         moveTask(taskId, sourceColId, destColId);
     };
 
-    const moveTask = (taskId: string, sourceColId: string, destColId: string) => {
+    const moveTask = async (taskId: string, sourceColId: string, destColId: string) => {
         if (sourceColId === destColId) return;
         const sourceCol = columns[sourceColId];
         const destCol = columns[destColId];
         const taskToMove = sourceCol.tasks.find(t => t.id === taskId);
 
         if (taskToMove) {
+            // Optimistic Update
             setColumns({
                 ...columns,
                 [sourceColId]: { ...sourceCol, tasks: sourceCol.tasks.filter(t => t.id !== taskId) },
                 [destColId]: { ...destCol, tasks: [...destCol.tasks, taskToMove] }
             });
+
+            // DB Update
+            await supabase.from('board_tasks').update({ column_id: destColId }).eq('id', taskId);
+
             addNotification({ type: 'info', title: 'Tarea Movida', message: `Ubicación actualizada: ${destCol.title}` });
             if (selectedTask?.id === taskId) {
-                setActivePopover(null);
+                // Keep modal open but update context if needed? actually we don't need to do anything here
             }
         }
     };
 
-    const handleUpdateTask = (updatedTask: Task) => {
+    const handleUpdateTask = async (updatedTask: Task) => {
+        // Optimistic
         const newColumns = { ...columns };
         for (const colId in newColumns) {
             const index = newColumns[colId].tasks.findIndex(t => t.id === updatedTask.id);
@@ -291,30 +384,63 @@ const Projects: React.FC = () => {
         }
         setColumns(newColumns);
         setSelectedTask(updatedTask);
+
+        // DB Update
+        await supabase.from('board_tasks').update({
+            title: updatedTask.title,
+            description: updatedTask.description,
+            priority: updatedTask.priority,
+            due_date: updatedTask.dueDate
+        }).eq('id', updatedTask.id);
     };
 
     // --- Actions Panel Functions ---
 
-    const handleArchive = () => {
+    const handleArchive = async () => {
         if (!selectedTask) return;
+        // Optimistic
         const newColumns = { ...columns };
         for (const colId in newColumns) {
             newColumns[colId].tasks = newColumns[colId].tasks.filter(t => t.id !== selectedTask.id);
         }
         setColumns(newColumns);
+
+        // DB
+        await supabase.from('board_tasks').delete().eq('id', selectedTask.id);
+
         setSelectedTask(null);
-        addNotification({ type: 'error', title: 'Registro Archivado', message: 'La tarea ha sido movida al archivo histórico del SGC.' });
+        addNotification({ type: 'error', title: 'Registro Archivado', message: 'La tarea ha sido eliminada permanentemente.' });
     };
 
-    const handleCopy = () => {
+    const handleCopy = async () => {
         if (!selectedTask) return;
-        const newTask = { ...selectedTask, id: `COPY-${Date.now()}`, title: `${selectedTask.title} (Copia)` };
-        const colId = Object.keys(columns).find(k => columns[k].tasks.some(t => t.id === selectedTask.id)) || 'identified';
-        setColumns({
-            ...columns,
-            [colId]: { ...columns[colId], tasks: [...columns[colId].tasks, newTask] }
-        });
-        addNotification({ type: 'success', title: 'Tarea Duplicada', message: 'Se ha creado una copia técnica del registro.' });
+        const colId = Object.keys(columns).find(k => columns[k].tasks.some(t => t.id === selectedTask.id));
+        if (!colId) return;
+
+        const { data } = await supabase.from('board_tasks').insert({
+            column_id: colId,
+            title: `${selectedTask.title} (Copia)`,
+            description: selectedTask.description,
+            priority: selectedTask.priority,
+            due_date: selectedTask.dueDate
+        }).select().single();
+
+        if (data) {
+            const newTask: Task = {
+                ...selectedTask,
+                id: data.id,
+                title: data.title,
+                labels: [],
+                checklist: [],
+                comments: [],
+                attachments: []
+            };
+            setColumns({
+                ...columns,
+                [colId]: { ...columns[colId], tasks: [...columns[colId].tasks, newTask] }
+            });
+            addNotification({ type: 'success', title: 'Tarea Duplicada', message: 'Se ha creado una copia técnica del registro.' });
+        }
     };
 
     const handleShare = () => {
@@ -323,72 +449,145 @@ const Projects: React.FC = () => {
         addNotification({ type: 'info', title: 'Enlace Copiado', message: 'Trazabilidad digital disponible en el portapapeles.' });
     };
 
-    const handlePostComment = () => {
+    const handlePostComment = async () => {
         if (!selectedTask || !commentText.trim()) return;
-        const newComment: TaskComment = {
-            id: Date.now().toString(),
-            author: 'Janier Mosquera',
-            text: commentText,
-            date: new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
-        };
-        handleUpdateTask({
-            ...selectedTask,
-            comments: [...(selectedTask.comments || []), newComment]
-        });
+
+        const { data: { user } } = await supabase.auth.getUser();
+
+        const { data } = await supabase.from('task_comments').insert({
+            task_id: selectedTask.id,
+            content: commentText,
+            author_id: user?.id,
+            author_name: user?.user_metadata?.full_name || 'Usuario'
+        }).select().single();
+
+        if (data) {
+            const newComment: TaskComment = {
+                id: data.id,
+                author: data.author_name,
+                text: data.content,
+                date: new Date(data.created_at).toLocaleDateString()
+            };
+
+            const updatedTask = {
+                ...selectedTask,
+                comments: [...(selectedTask.comments || []), newComment]
+            };
+            setSelectedTask(updatedTask);
+            // Updating columns state for consistency
+            const newColumns = { ...columns };
+            for (const colId in newColumns) {
+                const idx = newColumns[colId].tasks.findIndex(t => t.id === selectedTask.id);
+                if (idx !== -1) { newColumns[colId].tasks[idx] = updatedTask; break; }
+            }
+            setColumns(newColumns);
+        }
         setCommentText('');
     };
 
-    const handleSaveDesc = () => {
+    const handleSaveDesc = async () => {
         if (!selectedTask) return;
-        handleUpdateTask({ ...selectedTask, description: tempDesc });
+        await supabase.from('board_tasks').update({ description: tempDesc }).eq('id', selectedTask.id);
+
+        const updatedTask = { ...selectedTask, description: tempDesc };
+        setSelectedTask(updatedTask);
+        const newColumns = { ...columns };
+        for (const colId in newColumns) {
+            const idx = newColumns[colId].tasks.findIndex(t => t.id === selectedTask.id);
+            if (idx !== -1) { newColumns[colId].tasks[idx] = updatedTask; break; }
+        }
+        setColumns(newColumns);
         setIsEditingDesc(false);
     };
 
-    const handleSaveNewTask = (title: string, priority: Priority, description: string) => {
-        const newTask: Task = {
-            id: `TASK-${Date.now()}`,
+    const handleSaveNewTask = async (title: string, priority: Priority, description: string) => {
+        if (!boardId) return;
+        const firstColId = Object.keys(columns)[0];
+        if (!firstColId) return;
+
+        const { data } = await supabase.from('board_tasks').insert({
+            column_id: firstColId,
             title,
             priority,
             description,
-            dueDate: new Date().toISOString().split('T')[0],
-            labels: [],
-            assignedUsers: [],
-            attachments: [],
-            comments: [],
-            checklist: []
-        };
+            due_date: new Date().toISOString().split('T')[0]
+        }).select().single();
 
-        setColumns({
-            ...columns,
-            'identified': {
-                ...columns['identified'],
-                tasks: [...columns['identified'].tasks, newTask]
-            }
-        });
+        if (data) {
+            const newTask: Task = {
+                id: data.id,
+                title: data.title,
+                priority: data.priority as Priority,
+                description: data.description,
+                dueDate: data.due_date,
+                labels: [],
+                assignedUsers: [],
+                attachments: [],
+                comments: [],
+                checklist: []
+            };
 
-        setIsCreateModalOpen(false);
-        addNotification({
-            type: 'success',
-            title: 'REQUERIMIENTO CREADO',
-            message: `El registro "${title}" ha sido incorporado a la lista de Identificadas.`
-        });
+            setColumns({
+                ...columns,
+                [firstColId]: {
+                    ...columns[firstColId],
+                    tasks: [...columns[firstColId].tasks, newTask]
+                }
+            });
+
+            setIsCreateModalOpen(false);
+            addNotification({
+                type: 'success',
+                title: 'REQUERIMIENTO CREADO',
+                message: `El registro "${title}" ha sido incorporado a la lista.`
+            });
+        }
     };
 
     // --- Checklist Functions ---
 
-    const handleAddChecklistItem = () => {
+    const handleAddChecklistItem = async () => {
         if (!selectedTask || !newChecklistItem.trim()) return;
-        const newItem: ChecklistItem = { id: Date.now().toString(), text: newChecklistItem, completed: false };
-        handleUpdateTask({ ...selectedTask, checklist: [...(selectedTask.checklist || []), newItem] });
+
+        const { data } = await supabase.from('task_checklists').insert({
+            task_id: selectedTask.id,
+            text: newChecklistItem,
+            completed: false
+        }).select().single();
+
+        if (data) {
+            const newItem: ChecklistItem = { id: data.id, text: data.text, completed: data.completed };
+            const updatedTask = { ...selectedTask, checklist: [...(selectedTask.checklist || []), newItem] };
+            setSelectedTask(updatedTask);
+            const newColumns = { ...columns };
+            for (const colId in newColumns) {
+                const idx = newColumns[colId].tasks.findIndex(t => t.id === selectedTask.id);
+                if (idx !== -1) { newColumns[colId].tasks[idx] = updatedTask; break; }
+            }
+            setColumns(newColumns);
+        }
         setNewChecklistItem('');
     };
 
-    const toggleChecklistItem = (id: string) => {
+    const toggleChecklistItem = async (id: string) => {
         if (!selectedTask) return;
-        const newChecklist = selectedTask.checklist?.map(item =>
-            item.id === id ? { ...item, completed: !item.completed } : item
+        const item = selectedTask.checklist?.find(i => i.id === id);
+        if (!item) return;
+
+        const newCompleted = !item.completed;
+        await supabase.from('task_checklists').update({ completed: newCompleted }).eq('id', id);
+
+        const newChecklist = selectedTask.checklist?.map(i =>
+            i.id === id ? { ...i, completed: newCompleted } : i
         );
-        handleUpdateTask({ ...selectedTask, checklist: newChecklist });
+        const updatedTask = { ...selectedTask, checklist: newChecklist };
+        setSelectedTask(updatedTask);
+        const newColumns = { ...columns };
+        for (const colId in newColumns) {
+            const idx = newColumns[colId].tasks.findIndex(t => t.id === selectedTask.id);
+            if (idx !== -1) { newColumns[colId].tasks[idx] = updatedTask; break; }
+        }
+        setColumns(newColumns);
     };
 
     // --- Popover Toggles ---
@@ -405,6 +604,10 @@ const Projects: React.FC = () => {
         return columns[currentColumnId]?.title || '';
     }, [currentColumnId, columns]);
 
+    if (loading) {
+        return <div className="h-full flex items-center justify-center"><RobotIcon className="text-6xl text-slate-300 animate-bounce" /></div>;
+    }
+
     return (
         <div className="flex flex-col h-full gap-8 animate-fade-in pb-10">
             <div className="flex flex-col gap-2">
@@ -413,9 +616,30 @@ const Projects: React.FC = () => {
                     <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter uppercase">
                         Tablero <span className="text-sky-600">Estratégico Alco</span>
                     </h1>
-                    <button onClick={() => setIsCreateModalOpen(true)} className="flex items-center gap-2 px-8 h-14 bg-sky-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] hover:brightness-110 transition-all shadow-xl shadow-sky-600/20 active:scale-95">
-                        <PlusIcon /> Nuevo Requerimiento
-                    </button>
+                    <div className="flex gap-4">
+                        <BulkUploadButton
+                            tableName="board_tasks"
+                            label="Importar Proyectos"
+                            onUploadComplete={fetchBoardData}
+                            mapping={(row: any) => {
+                                const firstColId = Object.keys(columns)[0];
+                                if (!boardId || !firstColId) {
+                                    console.error("Board info missing for upload");
+                                    return row;
+                                }
+                                return {
+                                    column_id: firstColId,
+                                    title: row.Title || row.title || row.Titulo || 'Proyecto Importado',
+                                    description: row.Description || row.description || row.Descripcion || '',
+                                    priority: row.Priority || row.priority || row.Prioridad || 'Media',
+                                    due_date: row.DueDate || row.due_date || row.FechaLimite || new Date().toISOString().split('T')[0]
+                                };
+                            }}
+                        />
+                        <button onClick={() => setIsCreateModalOpen(true)} className="flex items-center gap-2 px-8 h-14 bg-sky-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] hover:brightness-110 transition-all shadow-xl shadow-sky-600/20 active:scale-95">
+                            <PlusIcon /> Nuevo Requerimiento
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -453,401 +677,202 @@ const Projects: React.FC = () => {
                 ))}
             </div>
 
-            {/* MODAL CREAR REQUERIMIENTO */}
-            <CreateTaskModal
-                isOpen={isCreateModalOpen}
-                onClose={() => setIsCreateModalOpen(false)}
-                onSave={handleSaveNewTask}
-            />
-
-            {/* MODAL DETALLE DE TARJETA (ALCO PREMIUM) */}
+            {/* Task Detail Modal */}
             {selectedTask && (
-                <div className="fixed inset-0 z-[2000] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-                    <div className="bg-[#f4f5f7] dark:bg-[#0b0b14] rounded-3xl w-full max-w-6xl my-auto shadow-2xl border border-slate-200 dark:border-white/5 animate-fade-in-up overflow-hidden">
+                <div className="fixed inset-0 z-[2000] bg-slate-900/90 backdrop-blur-sm flex justify-end" onClick={() => setSelectedTask(null)}>
+                    <div className="w-full max-w-4xl bg-white dark:bg-[#1a1a24] h-full shadow-2xl p-8 overflow-y-auto animate-slide-in-right border-l border-slate-200 dark:border-white/5" onClick={e => e.stopPropagation()}>
 
-                        {/* Header del Modal */}
-                        <div className="p-10 pb-4 bg-white dark:bg-[#1a1a24] border-b dark:border-white/5">
-                            <div className="flex justify-between items-start mb-6">
-                                <div className="flex items-start gap-5">
-                                    <div className="mt-2"><i className="fas fa-id-card text-slate-400 dark:text-slate-500 text-2xl"></i></div>
-                                    <div className="space-y-1">
-                                        <h2 className="text-3xl font-black text-slate-800 dark:text-white uppercase tracking-tighter leading-none">{selectedTask.title}</h2>
-                                        <p className="text-sm text-slate-500 font-bold">
-                                            en la lista <span className="underline cursor-pointer hover:text-sky-600 transition-colors uppercase tracking-widest text-[10px]">{currentColumnTitle}</span>
-                                        </p>
-                                    </div>
+                        {/* Header */}
+                        <div className="flex justify-between items-start mb-8">
+                            <div className="flex-1 mr-8">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <span className="px-3 py-1 bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                        {currentColumnTitle}
+                                    </span>
+                                    {selectedTask.dueDate && (
+                                        <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-slate-400">
+                                            <CalendarIcon className="size-3" /> Due {selectedTask.dueDate}
+                                        </span>
+                                    )}
                                 </div>
-                                <button onClick={() => { setSelectedTask(null); setActivePopover(null); }} className="size-12 hover:bg-slate-100 dark:hover:bg-white/5 rounded-full text-slate-400 text-3xl transition-all flex items-center justify-center">&times;</button>
+                                <h2 className="text-3xl font-black text-slate-900 dark:text-white leading-tight mb-2">
+                                    {selectedTask.title}
+                                </h2>
+                                <p className="text-xs text-slate-400 font-mono">ID: {selectedTask.id}</p>
                             </div>
-
-                            {/* Acciones Rápidas Superiores */}
-                            <div className="flex flex-wrap gap-2 ml-12 relative">
-                                <button className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-white/10 transition-all active:scale-95 shadow-sm"><PlusIcon className="scale-75" /> Añadir</button>
-
-                                <div className="relative">
-                                    <button
-                                        ref={popoverAnchorRefs.labels}
-                                        onClick={() => togglePopover('labels')}
-                                        className={`flex items-center gap-2 px-5 py-2.5 ${activePopover === 'labels' ? 'bg-sky-600 text-white border-sky-600' : 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-white/10'} border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm`}
-                                    >
-                                        <i className="fas fa-tags scale-75"></i> Etiquetas
-                                    </button>
-                                    {activePopover === 'labels' && (
-                                        <Popover title="Etiquetas Técnicas" onClose={() => setActivePopover(null)} anchorEl={popoverAnchorRefs.labels}>
-                                            <div className="space-y-2">
-                                                {AVAILABLE_LABELS.map(label => {
-                                                    const isSelected = selectedTask.labels.some(l => l.id === label.id);
-                                                    return (
-                                                        <button
-                                                            key={label.id}
-                                                            onClick={() => {
-                                                                const newLabels = isSelected
-                                                                    ? selectedTask.labels.filter(l => l.id !== label.id)
-                                                                    : [...selectedTask.labels, label];
-                                                                handleUpdateTask({ ...selectedTask, labels: newLabels });
-                                                            }}
-                                                            className={`w-full flex items-center justify-between p-3 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all ${isSelected ? 'bg-sky-50 dark:bg-sky-900/20 border-sky-500 text-sky-700' : 'bg-white dark:bg-black/20 border-slate-100 dark:border-white/5 text-slate-500'}`}
-                                                        >
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="size-3 rounded-full" style={{ backgroundColor: label.color }} />
-                                                                {label.name}
-                                                            </div>
-                                                            {isSelected && <i className="fas fa-check"></i>}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </Popover>
-                                    )}
-                                </div>
-
-                                <div className="relative">
-                                    <button
-                                        ref={popoverAnchorRefs.dates}
-                                        onClick={() => togglePopover('dates')}
-                                        className={`flex items-center gap-2 px-5 py-2.5 ${activePopover === 'dates' ? 'bg-sky-600 text-white border-sky-600' : 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-white/10'} border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm`}
-                                    >
-                                        <i className="far fa-clock scale-75"></i> Fechas
-                                    </button>
-                                    {activePopover === 'dates' && (
-                                        <Popover title="Fecha de Vencimiento" onClose={() => setActivePopover(null)} anchorEl={popoverAnchorRefs.dates}>
-                                            <input
-                                                type="date"
-                                                className="w-full p-4 bg-slate-50 dark:bg-slate-900 rounded-xl text-xs font-bold focus:ring-2 focus:ring-sky-500 outline-none uppercase"
-                                                value={selectedTask.dueDate}
-                                                onChange={e => handleUpdateTask({ ...selectedTask, dueDate: e.target.value })}
-                                            />
-                                        </Popover>
-                                    )}
-                                </div>
-
-                                <div className="relative">
-                                    <button
-                                        ref={popoverAnchorRefs.checklist}
-                                        onClick={() => togglePopover('checklist')}
-                                        className={`flex items-center gap-2 px-5 py-2.5 ${activePopover === 'checklist' ? 'bg-sky-600 text-white border-sky-600' : 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-white/10'} border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm`}
-                                    >
-                                        <i className="far fa-check-square scale-75"></i> Checklist
-                                    </button>
-                                    {activePopover === 'checklist' && (
-                                        <Popover title="Nueva Lista de Control" onClose={() => setActivePopover(null)} anchorEl={popoverAnchorRefs.checklist}>
-                                            <div className="space-y-3">
-                                                <input
-                                                    className="w-full p-3 bg-slate-50 dark:bg-slate-900 rounded-xl text-xs font-bold outline-none border dark:border-white/5"
-                                                    placeholder="Título de la lista..."
-                                                    autoFocus
-                                                />
-                                                <button
-                                                    onClick={() => {
-                                                        if (!selectedTask.checklist) handleUpdateTask({ ...selectedTask, checklist: [] });
-                                                        setActivePopover(null);
-                                                    }}
-                                                    className="w-full py-3 bg-sky-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest"
-                                                >
-                                                    Crear Lista
-                                                </button>
-                                            </div>
-                                        </Popover>
-                                    )}
-                                </div>
-
-                                <div className="relative">
-                                    <button
-                                        ref={popoverAnchorRefs.members}
-                                        onClick={() => togglePopover('members')}
-                                        className={`flex items-center gap-2 px-5 py-2.5 ${activePopover === 'members' ? 'bg-sky-600 text-white border-sky-600' : 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-white/10'} border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm`}
-                                    >
-                                        <i className="far fa-user scale-75"></i> Miembros
-                                    </button>
-                                    {activePopover === 'members' && (
-                                        <Popover title="Miembros Técnicos" onClose={() => setActivePopover(null)} anchorEl={popoverAnchorRefs.members}>
-                                            <div className="space-y-2">
-                                                {PROJECT_USERS.map(user => {
-                                                    const isAssigned = selectedTask.assignedUsers.some(u => u.id === user.id);
-                                                    return (
-                                                        <button
-                                                            key={user.id}
-                                                            onClick={() => {
-                                                                const newUsers = isAssigned
-                                                                    ? selectedTask.assignedUsers.filter(u => u.id !== user.id)
-                                                                    : [...selectedTask.assignedUsers, user];
-                                                                handleUpdateTask({ ...selectedTask, assignedUsers: newUsers });
-                                                            }}
-                                                            className={`w-full flex items-center justify-between p-3 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all ${isAssigned ? 'bg-sky-50 dark:bg-sky-900/20 border-sky-500 text-sky-700' : 'bg-white dark:bg-black/20 border-slate-100 dark:border-white/5 text-slate-500'}`}
-                                                        >
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="size-6 bg-slate-200 dark:bg-slate-700 rounded-full flex items-center justify-center text-[9px]">{user.initials}</div>
-                                                                Miembro: {user.initials}
-                                                            </div>
-                                                            {isAssigned && <i className="fas fa-check"></i>}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </Popover>
-                                    )}
-                                </div>
-                            </div>
+                            <button onClick={() => setSelectedTask(null)} className="size-10 bg-slate-100 dark:bg-white/5 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors">
+                                &times;
+                            </button>
                         </div>
 
-                        <div className="p-10 pt-8 grid grid-cols-1 lg:grid-cols-12 gap-12 overflow-y-auto max-h-[70vh] custom-scrollbar">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+                            {/* Main Content */}
+                            <div className="lg:col-span-2 space-y-10">
 
-                            {/* Columna de Contenido Principal */}
-                            <div className="lg:col-span-8 space-y-12">
-
-                                {/* DESCRIPCIÓN */}
-                                <section>
-                                    <div className="flex justify-between items-center mb-6">
-                                        <div className="flex items-center gap-5 text-slate-800 dark:text-white">
-                                            <i className="fas fa-align-left text-xl text-slate-400"></i>
-                                            <h4 className="text-lg font-black uppercase tracking-tighter">Descripción</h4>
-                                        </div>
-                                        {!isEditingDesc && (
-                                            <button onClick={() => setIsEditingDesc(true)} className="px-6 py-2 bg-slate-200 dark:bg-white/10 hover:bg-slate-300 dark:hover:bg-white/20 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 transition-all">Editar</button>
-                                        )}
-                                    </div>
-                                    <div className="ml-10">
-                                        {isEditingDesc ? (
-                                            <div className="space-y-3">
-                                                <textarea
-                                                    autoFocus
-                                                    value={tempDesc}
-                                                    onChange={e => setTempDesc(e.target.value)}
-                                                    className="w-full p-6 bg-white dark:bg-[#1a1a24] border-2 border-sky-500/30 rounded-2xl text-sm font-medium focus:ring-4 focus:ring-sky-500/10 outline-none shadow-inner"
-                                                    rows={5}
-                                                    placeholder="Añada un relato detallado del requerimiento..."
-                                                />
-                                                <div className="flex gap-3">
-                                                    <button onClick={handleSaveDesc} className="px-6 py-2.5 bg-sky-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-sky-600/20 active:scale-95 transition-all">Guardar</button>
-                                                    <button onClick={() => { setIsEditingDesc(false); setTempDesc(selectedTask.description); }} className="px-6 py-2.5 bg-slate-200 dark:bg-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-400 hover:bg-slate-300">Cancelar</button>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className="text-sm text-slate-600 dark:text-slate-400 font-medium leading-relaxed bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm min-h-[40px] cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5" onClick={() => setIsEditingDesc(true)}>
-                                                {selectedTask.description || <span className="opacity-40 italic">Haga clic para añadir una descripción técnica más detallada...</span>}
-                                            </div>
-                                        )}
-                                    </div>
-                                </section>
-
-                                {/* CHECKLIST (Implementación Real) */}
-                                {(selectedTask.checklist || []).length > 0 && (
-                                    <section>
-                                        <div className="flex justify-between items-center mb-6">
-                                            <div className="flex items-center gap-5 text-slate-800 dark:text-white">
-                                                <i className="far fa-check-square text-xl text-slate-400"></i>
-                                                <h4 className="text-lg font-black uppercase tracking-tighter">Checklist</h4>
-                                            </div>
-                                            <button onClick={() => handleUpdateTask({ ...selectedTask, checklist: [] })} className="px-6 py-2 bg-slate-200 dark:bg-white/10 hover:bg-slate-300 dark:hover:bg-white/20 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 transition-all">Eliminar</button>
-                                        </div>
-                                        <div className="ml-10 space-y-4">
-                                            <div className="flex items-center gap-4 mb-4">
-                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                                    {Math.round((selectedTask.checklist?.filter(i => i.completed).length || 0) / (selectedTask.checklist?.length || 1) * 100)}%
-                                                </span>
-                                                <div className="flex-grow h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                                                    <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${(selectedTask.checklist?.filter(i => i.completed).length || 0) / (selectedTask.checklist?.length || 1) * 100}%` }}></div>
-                                                </div>
-                                            </div>
-                                            {selectedTask.checklist?.map(item => (
-                                                <div key={item.id} className="flex items-center gap-4 group">
-                                                    <button
-                                                        onClick={() => toggleChecklistItem(item.id)}
-                                                        className={`size-5 rounded border-2 flex items-center justify-center transition-all ${item.completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 dark:border-slate-700 hover:border-sky-500'}`}
-                                                    >
-                                                        {item.completed && <i className="fas fa-check text-[10px]"></i>}
-                                                    </button>
-                                                    <span className={`text-sm font-medium ${item.completed ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}>{item.text}</span>
-                                                    <button
-                                                        onClick={() => handleUpdateTask({ ...selectedTask, checklist: selectedTask.checklist?.filter(i => i.id !== item.id) })}
-                                                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-500 transition-all ml-auto"
-                                                    >
-                                                        <TrashIcon className="scale-75" />
-                                                    </button>
-                                                </div>
-                                            ))}
-                                            <div className="flex gap-3 mt-4">
-                                                <input
-                                                    className="flex-grow p-3 bg-white dark:bg-slate-900 border dark:border-white/5 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-sky-500"
-                                                    placeholder="Añadir un elemento..."
-                                                    value={newChecklistItem}
-                                                    onChange={e => setNewChecklistItem(e.target.value)}
-                                                    onKeyDown={e => e.key === 'Enter' && handleAddChecklistItem()}
-                                                />
-                                                <button onClick={handleAddChecklistItem} className="px-6 py-3 bg-sky-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg">Añadir</button>
-                                            </div>
-                                        </div>
-                                    </section>
-                                )}
-
-                                {/* ADJUNTOS */}
-                                <section>
-                                    <div className="flex justify-between items-center mb-6">
-                                        <div className="flex items-center gap-5 text-slate-800 dark:text-white">
-                                            <i className="fas fa-paperclip text-xl text-slate-400"></i>
-                                            <h4 className="text-lg font-black uppercase tracking-tighter">Adjuntos</h4>
-                                        </div>
-                                        <button className="px-6 py-2 bg-slate-200 dark:bg-white/10 hover:bg-slate-300 dark:hover:bg-white/20 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 transition-all">Añadir</button>
-                                    </div>
-
-                                    <div className="ml-10 space-y-4">
-                                        {selectedTask.attachments.length > 0 ? (
-                                            selectedTask.attachments.map(att => (
-                                                <div key={att.id} className="flex items-center gap-6 group bg-white dark:bg-white/[0.02] p-3 rounded-2xl border border-slate-100 dark:border-white/5 hover:border-sky-500/30 transition-all">
-                                                    <div className="w-32 h-24 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center border-2 border-white dark:border-white/10 shadow-md overflow-hidden flex-shrink-0">
-                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter underline decoration-2 underline-offset-4 decoration-sky-500">SGC ARCHIVO</span>
-                                                    </div>
-                                                    <div className="flex-grow">
-                                                        <h5 className="text-sm font-black text-slate-800 dark:text-white uppercase truncate tracking-tight">{att.name}</h5>
-                                                        <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-widest">Trazabilidad Técnica • {Math.round(att.size / 1024)} KB</p>
-                                                        <div className="flex gap-5 mt-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                                            <button className="hover:text-sky-600 flex items-center gap-1"><i className="fas fa-external-link-alt text-[9px]"></i> Abrir</button>
-                                                            <button
-                                                                onClick={() => handleUpdateTask({ ...selectedTask, attachments: selectedTask.attachments.filter(a => a.id !== att.id) })}
-                                                                className="hover:text-rose-500 flex items-center gap-1"
-                                                            >
-                                                                <TrashIcon className="scale-75" /> Eliminar
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))
-                                        ) : (
-                                            <div className="p-14 border-4 border-dashed border-slate-200 dark:border-white/5 rounded-3xl text-center opacity-30 flex flex-col items-center gap-3">
-                                                <PaperclipIcon className="text-4xl" />
-                                                <p className="text-xs font-black uppercase tracking-widest">Sin archivos adjuntos en el registro</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </section>
-
-                                {/* COMENTARIOS Y ACTIVIDAD */}
-                                <section className="space-y-8">
+                                {/* Description */}
+                                <div className="space-y-4">
                                     <div className="flex justify-between items-center">
-                                        <div className="flex items-center gap-5 text-slate-800 dark:text-white">
-                                            <i className="far fa-list-alt text-xl text-slate-400"></i>
-                                            <h4 className="text-lg font-black uppercase tracking-tighter">Comentarios y Actividad</h4>
+                                        <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                            <Bars3Icon /> Descripción Técnica
+                                        </h3>
+                                        {!isEditingDesc && (
+                                            <button onClick={() => setIsEditingDesc(true)} className="text-xs font-bold text-sky-600 hover:text-sky-500 transition-colors">
+                                                Editar
+                                            </button>
+                                        )}
+                                    </div>
+                                    {isEditingDesc ? (
+                                        <div className="space-y-3">
+                                            <textarea
+                                                className="w-full p-4 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-xl min-h-[150px] text-sm text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-sky-500/50 outline-none resize-none"
+                                                value={tempDesc}
+                                                onChange={e => setTempDesc(e.target.value)}
+                                            />
+                                            <div className="flex gap-2">
+                                                <button onClick={handleSaveDesc} className="px-4 py-2 bg-sky-600 text-white rounded-lg text-xs font-bold uppercase tracking-wider">Guardar</button>
+                                                <button onClick={() => setIsEditingDesc(false)} className="px-4 py-2 bg-slate-200 dark:bg-white/5 text-slate-600 dark:text-slate-400 rounded-lg text-xs font-bold uppercase tracking-wider">Cancelar</button>
+                                            </div>
                                         </div>
-                                        <button className="px-6 py-2 bg-slate-200 dark:bg-white/10 hover:bg-slate-300 dark:hover:bg-white/20 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 transition-all">Mostrar detalles</button>
+                                    ) : (
+                                        <div onClick={() => setIsEditingDesc(true)} className="prose prose-sm dark:prose-invert text-slate-600 dark:text-slate-300 cursor-pointer p-4 hover:bg-slate-50 dark:hover:bg-white/5 rounded-xl transition-colors border border-transparent hover:border-slate-200 dark:hover:border-white/10">
+                                            {selectedTask.description || <span className="italic opacity-50">Sin descripción detallada...</span>}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Checklist */}
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center">
+                                        <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                            <CheckCircleIcon /> Checklist de Calidad
+                                        </h3>
                                     </div>
 
-                                    <div className="flex gap-5">
-                                        <div className="size-11 rounded-full bg-rose-600 text-white flex items-center justify-center font-black text-xs flex-shrink-0 shadow-lg shadow-rose-600/30">JM</div>
-                                        <div className="flex-grow space-y-3">
+                                    <div className="space-y-2">
+                                        {/* Progress Bar */}
+                                        {selectedTask.checklist && selectedTask.checklist.length > 0 && (
+                                            <div className="h-2 bg-slate-100 dark:bg-white/5 rounded-full overflow-hidden mb-4">
+                                                <div
+                                                    className="h-full bg-sky-500 transition-all duration-500"
+                                                    style={{ width: `${(selectedTask.checklist.filter(i => i.completed).length / selectedTask.checklist.length) * 100}%` }}
+                                                />
+                                            </div>
+                                        )}
+
+                                        {selectedTask.checklist?.map(item => (
+                                            <div key={item.id} className="group flex items-center gap-3 p-3 bg-slate-50 dark:bg-white/[0.02] rounded-xl hover:bg-white dark:hover:bg-white/5 border border-transparent hover:border-sky-500/20 transition-all">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={item.completed}
+                                                    onChange={() => toggleChecklistItem(item.id)}
+                                                    className="size-5 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                                                />
+                                                <span className={`text-sm font-medium ${item.completed ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                                                    {item.text}
+                                                </span>
+                                            </div>
+                                        ))}
+
+                                        <div className="flex gap-2 mt-4">
+                                            <input
+                                                className="flex-1 bg-transparent border-b border-slate-200 dark:border-white/10 py-2 text-sm focus:border-sky-500 outline-none transition-colors"
+                                                placeholder="Añadir ítem..."
+                                                value={newChecklistItem}
+                                                onChange={e => setNewChecklistItem(e.target.value)}
+                                                onKeyDown={e => e.key === 'Enter' && handleAddChecklistItem()}
+                                            />
+                                            <button onClick={handleAddChecklistItem} className="text-slate-400 hover:text-sky-500">
+                                                <PlusIcon />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Comments */}
+                                <div className="space-y-6 pt-6 border-t border-slate-100 dark:border-white/5">
+                                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                        Bitácora de Actividad
+                                    </h3>
+
+                                    <div className="bg-slate-50 dark:bg-black/20 p-4 rounded-xl border border-slate-200 dark:border-white/5 flex gap-4">
+                                        <div className="size-8 rounded-full bg-sky-600 flex items-center justify-center text-white font-bold text-xs">YO</div>
+                                        <div className="flex-1 space-y-3">
                                             <textarea
+                                                className="w-full bg-transparent text-sm outline-none resize-none h-10 focus:h-20 transition-all placeholder:text-slate-400"
+                                                placeholder="Escribe una actualización..."
                                                 value={commentText}
                                                 onChange={e => setCommentText(e.target.value)}
-                                                className="w-full p-4 bg-white dark:bg-[#1a1a24] border border-slate-200 dark:border-white/5 rounded-2xl text-sm font-medium focus:ring-4 focus:ring-sky-500/10 shadow-sm transition-all outline-none resize-none"
-                                                rows={2}
-                                                placeholder="Escribe un comentario..."
                                             />
-                                            {commentText.trim() && (
-                                                <button onClick={handlePostComment} className="px-8 py-2 bg-sky-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-sky-600/20 active:scale-95 transition-all">Publicar</button>
-                                            )}
+                                            <div className="flex justify-between items-center">
+                                                <button className="text-slate-400 hover:text-sky-500"><PaperclipIcon className="size-4" /></button>
+                                                <button
+                                                    onClick={handlePostComment}
+                                                    disabled={!commentText.trim()}
+                                                    className="px-4 py-1.5 bg-sky-600 text-white rounded-lg text-[10px] font-bold uppercase tracking-widest disabled:opacity-50 hover:bg-sky-700 transition-colors"
+                                                >
+                                                    Publicar
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <div className="space-y-8 ml-10">
-                                        {selectedTask.comments?.slice().reverse().map(comment => (
-                                            <div key={comment.id} className="flex gap-5 animate-fade-in">
-                                                <div className="size-11 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-black text-xs flex-shrink-0">
-                                                    {comment.author.split(' ').map(n => n[0]).join('')}
+                                    <div className="space-y-6">
+                                        {selectedTask.comments?.map(comment => (
+                                            <div key={comment.id} className="flex gap-4 animate-fade-in">
+                                                <div className="size-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                                                    {comment.author ? comment.author.substring(0, 2).toUpperCase() : '??'}
                                                 </div>
-                                                <div className="space-y-2 flex-grow">
-                                                    <div className="flex items-center gap-3">
-                                                        <span className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">{comment.author}</span>
-                                                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{comment.date}</span>
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className="text-xs font-bold text-slate-900 dark:text-white">{comment.author}</span>
+                                                        <span className="text-[10px] text-slate-400">{comment.date}</span>
                                                     </div>
-                                                    <div className="bg-white dark:bg-white/[0.03] p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-white/10 text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
+                                                    <p className="text-sm text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-white/5 p-3 rounded-tr-xl rounded-b-xl">
                                                         {comment.text}
-                                                    </div>
+                                                    </p>
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
-                                </section>
+                                </div>
                             </div>
 
-                            {/* Barra Lateral de Acciones (Sidebar) */}
-                            <div className="lg:col-span-4 space-y-10">
-                                <section className="space-y-3">
-                                    <h4 className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] mb-5 px-1">Acciones de Tarjeta</h4>
-                                    <div className="grid grid-cols-1 gap-2">
-
-                                        <div className="relative">
-                                            <button
-                                                ref={popoverAnchorRefs.move}
-                                                onClick={() => togglePopover('move')}
-                                                className={`w-full flex items-center gap-4 px-5 py-3.5 ${activePopover === 'move' ? 'bg-sky-600 text-white' : 'bg-slate-200 dark:bg-white/5 hover:bg-slate-300 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300'} rounded-xl text-[11px] font-black transition-all uppercase tracking-widest border border-transparent active:scale-95 group`}
-                                            >
-                                                <i className={`fas fa-arrow-right ${activePopover === 'move' ? 'text-white' : 'text-slate-400 group-hover:text-sky-600'} transition-colors`}></i> Mover
-                                            </button>
-                                            {activePopover === 'move' && (
-                                                <Popover title="Mover Tarjeta" onClose={() => setActivePopover(null)} anchorEl={popoverAnchorRefs.move}>
-                                                    <div className="space-y-2">
-                                                        {(Object.values(columns) as Column[]).map(col => (
-                                                            <button
-                                                                key={col.id}
-                                                                disabled={col.id === currentColumnId}
-                                                                onClick={() => moveTask(selectedTask.id, currentColumnId, col.id)}
-                                                                className={`w-full text-left p-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${col.id === currentColumnId ? 'opacity-50 cursor-not-allowed bg-slate-100 dark:bg-white/5' : 'hover:bg-sky-50 dark:hover:bg-sky-900/20 text-slate-500 hover:text-sky-700'}`}
-                                                            >
-                                                                Lista: {col.title}
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                </Popover>
-                                            )}
-                                        </div>
-
-                                        <button onClick={handleCopy} className="flex items-center gap-4 px-5 py-3.5 bg-slate-200 dark:bg-white/5 hover:bg-slate-300 dark:hover:bg-white/10 rounded-xl text-[11px] font-black text-slate-700 dark:text-slate-300 transition-all uppercase tracking-widest border border-transparent active:scale-95 group">
-                                            <i className="far fa-copy text-slate-400 group-hover:text-sky-600 transition-colors"></i> Copiar
+                            {/* Sidebar Actions */}
+                            <div className="space-y-8">
+                                <div>
+                                    <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Añadir a la tarjeta</h4>
+                                    <div className="flex flex-col gap-2">
+                                        <button ref={popoverAnchorRefs.labels} onClick={() => togglePopover('labels')} className="flex items-center gap-2 px-4 py-3 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 transition-all text-left">
+                                            <span className="size-4 rounded bg-emerald-400" /> Etiquetas
                                         </button>
-                                        <button onClick={() => addNotification({ type: 'success', title: 'Plantilla Creada', message: 'Registro guardado como base estratégica' })} className="flex items-center gap-4 px-5 py-3.5 bg-slate-200 dark:bg-white/5 hover:bg-slate-300 dark:hover:bg-white/10 rounded-xl text-[11px] font-black text-slate-700 dark:text-slate-300 transition-all uppercase tracking-widest border border-transparent active:scale-95 group">
-                                            <i className="far fa-object-ungroup text-slate-400 group-hover:text-sky-600 transition-colors"></i> Crear plantilla
+                                        <button ref={popoverAnchorRefs.members} onClick={() => togglePopover('members')} className="flex items-center gap-2 px-4 py-3 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 transition-all text-left">
+                                            <UserCircleIcon className="size-4" /> Miembros
                                         </button>
-                                        <div className="h-px bg-slate-300 dark:bg-white/10 my-4" />
-                                        <button onClick={handleShare} className="flex items-center gap-4 px-5 py-3.5 bg-slate-200 dark:bg-white/5 hover:bg-slate-300 dark:hover:bg-white/10 rounded-xl text-[11px] font-black text-slate-700 dark:text-slate-300 transition-all uppercase tracking-widest border border-transparent active:scale-95 group">
-                                            <i className="fas fa-share-alt text-slate-400 group-hover:text-sky-600 transition-colors"></i> Compartir
+                                        <button ref={popoverAnchorRefs.checklist} onClick={() => togglePopover('checklist')} className="flex items-center gap-2 px-4 py-3 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 transition-all text-left">
+                                            <CheckCircleIcon className="size-4" /> Checklist
                                         </button>
-                                        <button onClick={handleArchive} className="flex items-center gap-4 px-5 py-3.5 bg-slate-200 dark:bg-white/5 hover:bg-slate-300 dark:hover:bg-white/10 rounded-xl text-[11px] font-black text-slate-700 dark:text-slate-300 transition-all uppercase tracking-widest border border-transparent active:scale-95 group hover:text-rose-500">
-                                            <i className="far fa-archive text-slate-400 group-hover:text-rose-500 transition-colors"></i> Archivar
+                                        <button ref={popoverAnchorRefs.dates} onClick={() => togglePopover('dates')} className="flex items-center gap-2 px-4 py-3 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 transition-all text-left">
+                                            <CalendarIcon className="size-4" /> Fechas
+                                        </button>
+                                        <button className="flex items-center gap-2 px-4 py-3 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 transition-all text-left">
+                                            <PaperclipIcon className="size-4" /> Adjuntos
                                         </button>
                                     </div>
-                                </section>
+                                </div>
 
-                                {/* AI AGENT ASSISTANCE WIDGET */}
-                                <div className="p-8 bg-[#1a1a24] dark:bg-black/40 rounded-[2.5rem] text-white relative overflow-hidden shadow-2xl border border-white/5">
-                                    <RobotIcon className="absolute -right-10 -bottom-10 text-[10rem] opacity-5 pointer-events-none" />
-                                    <div className="flex items-center gap-3 mb-6">
-                                        <div className="size-10 rounded-2xl bg-sky-500/20 flex items-center justify-center text-sky-400">
-                                            <RobotIcon className="text-xl" />
-                                        </div>
-                                        <h5 className="text-[11px] font-black text-sky-400 uppercase tracking-[0.3em]">Asistente Alco IA</h5>
+                                <div>
+                                    <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Acciones</h4>
+                                    <div className="flex flex-col gap-2">
+                                        <button onClick={handleCopy} className="flex items-center gap-2 px-4 py-3 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 transition-all text-left">
+                                            <FolderOpenIcon className="size-4" /> Copiar
+                                        </button>
+                                        <button onClick={handleShare} className="flex items-center gap-2 px-4 py-3 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 transition-all text-left">
+                                            <SendIcon className="size-4" /> Compartir
+                                        </button>
+                                        <button onClick={handleArchive} className="flex items-center gap-2 px-4 py-3 bg-rose-50 dark:bg-rose-900/10 hover:bg-rose-100 dark:hover:bg-rose-900/30 rounded-xl text-xs font-bold text-rose-600 dark:text-rose-400 transition-all text-left mt-4 border border-transparent hover:border-rose-200 dark:hover:border-rose-800">
+                                            <TrashIcon className="size-4" /> Archivar
+                                        </button>
                                     </div>
-                                    <p className="text-xs font-bold leading-relaxed italic text-slate-300 opacity-90 relative z-10">
-                                        "He detectado que esta perfilería requiere un análisis de espesor adicional según la norma NTC 2409."
-                                    </p>
                                 </div>
                             </div>
                         </div>

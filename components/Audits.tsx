@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import Breadcrumbs from './Breadcrumbs';
-import { 
+import {
     RobotIcon, SearchIcon, CalendarIcon, BookIcon, CheckCircleIcon,
     ExclamationTriangleIcon, PlusIcon, ClipboardCheckIcon, SaveIcon,
     DownloadIcon, ViewIcon, RefreshIcon, ChevronRightIcon, FileAltIcon,
@@ -10,6 +9,8 @@ import {
 } from '../constants';
 import ReactMarkdown from 'react-markdown';
 import { useNotification } from './NotificationSystem';
+import { supabase } from '../supabaseClient';
+import BulkUploadButton from './BulkUploadButton';
 
 interface AuditFinding {
     id: string;
@@ -17,6 +18,7 @@ interface AuditFinding {
     description: string;
     evidence: string;
     type: 'Fortaleza' | 'Observación' | 'No Conformidad Menor' | 'No Conformidad Mayor';
+    audit_id?: string;
 }
 
 interface AlcoAudit {
@@ -49,79 +51,219 @@ const Audits: React.FC = () => {
     const [isPlanningModalOpen, setIsPlanningModalOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [isAnalyzingIA, setIsAnalyzingIA] = useState(false);
-
-    const [audits, setAudits] = useState<AlcoAudit[]>(() => {
-        const saved = localStorage.getItem('alco_audits_master');
-        return saved ? JSON.parse(saved) : [
-            {
-                id: 'AUD-2025-008',
-                reportNumber: 'N°8_2025',
-                version: '2',
-                auditDate: '2025-12-01',
-                process: 'ITA - INFRAESTRUCTURA TECNOLÓGICA Y AUTOMATIZACIÓN',
-                auditor: 'JANIER MOSQUERA',
-                objective: 'Verificar cumplimiento ISO 9001:2015.',
-                scope: 'PROCESOS DE ITA Y CAD.',
-                status: 'Finalizada',
-                findings: [
-                    { id: 'F1', clause: '6.1', description: 'Mantiene Matriz de Riesgos actualizada y socializada.', evidence: 'Matriz ITA 2025 Rev.03', type: 'Fortaleza' },
-                ],
-                executiveSummary: 'Se observa un alto compromiso con la trazabilidad digital y la mejora de los tiempos de respuesta del centro documental.',
-            }
-        ];
-    });
+    const [audits, setAudits] = useState<AlcoAudit[]>([]);
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        localStorage.setItem('alco_audits_master', JSON.stringify(audits));
-    }, [audits]);
+        fetchAudits();
+    }, []);
 
-    const handleCreateAudit = (e: React.FormEvent<HTMLFormElement>) => {
+    const fetchAudits = async () => {
+        setLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('audits')
+                .select(`
+                    *,
+                    findings:audit_findings(*)
+                `)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            const mappedAudits: AlcoAudit[] = (data || []).map(a => ({
+                id: a.id,
+                reportNumber: a.report_number,
+                version: a.version || '1',
+                auditDate: a.audit_date,
+                process: a.process,
+                auditor: a.auditor,
+                objective: a.objective || '',
+                scope: a.scope || '',
+                status: a.status as any,
+                executiveSummary: a.executive_summary || '',
+                findings: (a.findings || []).map((f: any) => ({
+                    id: f.id,
+                    clause: f.clause,
+                    description: f.description,
+                    evidence: f.evidence,
+                    type: f.type,
+                    audit_id: f.audit_id
+                }))
+            }));
+
+            setAudits(mappedAudits);
+        } catch (error) {
+            console.error('Error fetching audits:', error);
+            addNotification({ type: 'error', title: 'Error', message: 'No se pudieron cargar las auditorías.' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCreateAudit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
-        const newAudit: AlcoAudit = {
-            id: `AUD-${Date.now()}`,
-            reportNumber: `N°${audits.length + 1}_2025`,
-            version: '1',
-            auditDate: formData.get('date') as string,
-            process: formData.get('process') as string,
-            auditor: formData.get('auditor') as string,
-            objective: formData.get('objective') as string,
-            scope: formData.get('scope') as string,
-            status: 'Planificada',
-            findings: []
-        };
-        setAudits([newAudit, ...audits]);
-        setIsPlanningModalOpen(false);
-        addNotification({ type: 'success', title: 'AUDITORÍA PROGRAMADA', message: `El proceso ${newAudit.process} ha sido agendado.` });
+
+        try {
+            const newAuditData = {
+                report_number: `N°${audits.length + 1}_${new Date().getFullYear()}`,
+                version: '1',
+                audit_date: formData.get('date') as string,
+                process: formData.get('process') as string,
+                auditor: formData.get('auditor') as string,
+                objective: formData.get('objective') as string,
+                scope: formData.get('scope') as string,
+                status: 'Planificada'
+            };
+
+            const { data, error } = await supabase
+                .from('audits')
+                .insert(newAuditData)
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            const newAudit: AlcoAudit = {
+                id: data.id,
+                reportNumber: data.report_number,
+                version: data.version,
+                auditDate: data.audit_date,
+                process: data.process,
+                auditor: data.auditor,
+                objective: data.objective,
+                scope: data.scope,
+                status: data.status as any,
+                findings: []
+            };
+
+            setAudits([newAudit, ...audits]);
+            setIsPlanningModalOpen(false);
+            addNotification({ type: 'success', title: 'AUDITORÍA PROGRAMADA', message: `El proceso ${newAudit.process} ha sido agendado.` });
+
+        } catch (error) {
+            console.error(error);
+            addNotification({ type: 'error', title: 'Error', message: 'No se pudo programar la auditoría.' });
+        }
     };
 
-    const handleStartExecution = (audit: AlcoAudit) => {
-        const updated = { ...audit, status: 'En Ejecución' as const };
-        setSelectedAudit(updated);
-        setAudits(prev => prev.map(a => a.id === audit.id ? updated : a));
-        setActiveTab('execution');
+    const handleStartExecution = async (audit: AlcoAudit) => {
+        try {
+            const { error } = await supabase
+                .from('audits')
+                .update({ status: 'En Ejecución' })
+                .eq('id', audit.id);
+
+            if (error) throw error;
+
+            const updated = { ...audit, status: 'En Ejecución' as const };
+            setSelectedAudit(updated);
+            setAudits(prev => prev.map(a => a.id === audit.id ? updated : a));
+            setActiveTab('execution');
+        } catch (error) {
+            console.error(error);
+            addNotification({ type: 'error', title: 'Error', message: 'No se pudo iniciar la ejecución.' });
+        }
     };
 
-    const handleAddFinding = (finding: Omit<AuditFinding, 'id'>) => {
+    const handleAddFinding = async (finding: Omit<AuditFinding, 'id'>) => {
         if (!selectedAudit) return;
-        const newFinding = { ...finding, id: `F-${Date.now()}` };
-        const updated = { ...selectedAudit, findings: [...selectedAudit.findings, newFinding] };
-        setSelectedAudit(updated);
-        setAudits(prev => prev.map(a => a.id === updated.id ? updated : a));
+
+        try {
+            const { data, error } = await supabase
+                .from('audit_findings')
+                .insert({
+                    audit_id: selectedAudit.id,
+                    clause: finding.clause,
+                    description: finding.description,
+                    evidence: finding.evidence,
+                    type: finding.type
+                })
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            const newFinding: AuditFinding = {
+                id: data.id,
+                clause: data.clause,
+                description: data.description,
+                evidence: data.evidence,
+                type: data.type,
+                audit_id: data.audit_id
+            };
+
+            const updated = { ...selectedAudit, findings: [...selectedAudit.findings, newFinding] };
+            setSelectedAudit(updated);
+            setAudits(prev => prev.map(a => a.id === updated.id ? updated : a));
+            addNotification({ type: 'success', title: 'Hallazgo Registrado', message: 'Se ha guardado el hallazgo.' });
+
+        } catch (error) {
+            console.error(error);
+            addNotification({ type: 'error', title: 'Error', message: 'No se pudo guardar el hallazgo.' });
+        }
     };
+
+    const handleUpdateAuditStatus = async (status: 'Planificada' | 'En Ejecución' | 'Finalizada') => {
+        if (!selectedAudit) return;
+        try {
+            const { error } = await supabase
+                .from('audits')
+                .update({ status })
+                .eq('id', selectedAudit.id);
+
+            if (error) throw error;
+
+            const updated = { ...selectedAudit, status };
+            setSelectedAudit(updated);
+            setAudits(prev => prev.map(a => a.id === updated.id ? updated : a));
+            if (status === 'Finalizada') setActiveTab('dashboard');
+            addNotification({ type: 'success', title: 'Estado Actualizado', message: `Auditoría marcada como ${status}.` });
+
+        } catch (error) {
+            console.error(error);
+            addNotification({ type: 'error', title: 'Error', message: 'No se pudo actualizar el estado.' });
+        }
+    }
+
+    const handleDeleteAudit = async (id: string) => {
+        if (!confirm('¿Está seguro de eliminar esta auditoría? Esta acción no se puede deshacer.')) return;
+        try {
+            const { error } = await supabase.from('audits').delete().eq('id', id);
+            if (error) throw error;
+            setAudits(prev => prev.filter(a => a.id !== id));
+            addNotification({ type: 'info', title: 'Auditoría Eliminada', message: 'El registro ha sido eliminado.' });
+        } catch (error) {
+            console.error(error);
+            addNotification({ type: 'error', title: 'Error', message: 'No se pudo eliminar la auditoría.' });
+        }
+    }
+
 
     const handleGenerateExecutiveSummary = async () => {
         if (!selectedAudit || selectedAudit.findings.length === 0) return;
         setIsAnalyzingIA(true);
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const apiKey = import.meta.env.VITE_GOOGLE_API_KEY || 'YOUR_API_KEY';
+            const ai = new GoogleGenAI({ apiKey });
             const prompt = `Actúa como Auditor Líder ISO 9001. Genera un "Resumen Ejecutivo de Auditoría" profesional para el proceso "${selectedAudit.process}". Hallazgos detectados: ${JSON.stringify(selectedAudit.findings)}. El tono debe ser formal, destacando la madurez del sistema y áreas de mejora. Máximo 150 palabras en formato Markdown.`;
-            const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
-            const updated = { ...selectedAudit, executiveSummary: response.text };
+            const response = await ai.models.generateContent({ model: 'gemini-2.0-flash-exp', contents: prompt });
+            const summary = response.text();
+
+            const { error } = await supabase
+                .from('audits')
+                .update({ executive_summary: summary })
+                .eq('id', selectedAudit.id);
+
+            if (error) throw error;
+
+            const updated = { ...selectedAudit, executiveSummary: summary };
             setSelectedAudit(updated);
             setAudits(prev => prev.map(a => a.id === updated.id ? updated : a));
             addNotification({ type: 'success', title: 'RESUMEN IA GENERADO', message: 'Análisis de madurez incorporado al reporte.' });
         } catch (e) {
+            console.error(e);
             addNotification({ type: 'error', title: 'ERROR IA', message: 'No se pudo generar el análisis automático.' });
         } finally {
             setIsAnalyzingIA(false);
@@ -134,7 +276,7 @@ const Audits: React.FC = () => {
     return (
         <div className="animate-fade-in space-y-10 pb-20">
             <Breadcrumbs crumbs={[{ label: 'Sección II: Legal', path: '/dashboard' }, { label: 'GESTIÓN DE AUDITORÍAS' }]} />
-            
+
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div>
                     <h1 className="text-5xl font-black text-slate-800 dark:text-white uppercase tracking-tighter leading-none">Control de <span className="text-sky-600">Cumplimiento</span></h1>
@@ -143,9 +285,16 @@ const Audits: React.FC = () => {
                     </p>
                 </div>
                 {activeTab === 'dashboard' && (
-                    <button onClick={() => setIsPlanningModalOpen(true)} className="px-10 py-5 bg-sky-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl shadow-sky-600/20 hover:scale-105 active:scale-95 transition-all">
-                        Programar Auditoría
-                    </button>
+                    <div className="flex gap-4">
+                        <BulkUploadButton
+                            tableName="audits"
+                            onUploadComplete={fetchAudits}
+                            label="Importar Auditorías"
+                        />
+                        <button onClick={() => setIsPlanningModalOpen(true)} className="px-10 py-5 bg-sky-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl shadow-sky-600/20 hover:scale-105 active:scale-95 transition-all">
+                            Programar Auditoría
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -154,9 +303,9 @@ const Audits: React.FC = () => {
                     <div className="p-10 border-b dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex flex-col md:flex-row justify-between items-center gap-6">
                         <h3 className="text-2xl font-black uppercase tracking-tighter">Libro Maestro de Auditorías</h3>
                         <div className="relative w-full md:w-80">
-                            <input 
-                                className="w-full pl-12 pr-6 py-4 bg-white dark:bg-[#0b0b14] border-none rounded-2xl shadow-sm text-xs font-bold outline-none focus:ring-2 focus:ring-sky-500" 
-                                placeholder="Filtrar por Informe o Proceso..." 
+                            <input
+                                className="w-full pl-12 pr-6 py-4 bg-white dark:bg-[#0b0b14] border-none rounded-2xl shadow-sm text-xs font-bold outline-none focus:ring-2 focus:ring-sky-500"
+                                placeholder="Filtrar por Informe o Proceso..."
                                 value={searchTerm}
                                 onChange={e => setSearchTerm(e.target.value)}
                             />
@@ -164,46 +313,52 @@ const Audits: React.FC = () => {
                         </div>
                     </div>
                     <div className="overflow-x-auto custom-scrollbar">
-                        <table className="w-full text-left">
-                            <thead className="bg-slate-50/50 dark:bg-white/[0.02] text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] border-b dark:border-white/5">
-                                <tr>
-                                    <th className="px-10 py-6">Referencia</th>
-                                    <th className="px-10 py-6">Proceso / Auditor</th>
-                                    <th className="px-10 py-6 text-center">Estado ISO</th>
-                                    <th className="px-10 py-6 text-right">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y dark:divide-white/5">
-                                {audits.filter(a => a.process.toLowerCase().includes(searchTerm.toLowerCase())).map(audit => (
-                                    <tr key={audit.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-all group">
-                                        <td className="px-10 py-8">
-                                            <p className="font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight text-sm">{audit.reportNumber}</p>
-                                            <p className="text-[9px] text-sky-600 font-black mt-1">FECHA: {audit.auditDate}</p>
-                                        </td>
-                                        <td className="px-10 py-8">
-                                            <p className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase leading-tight">{audit.process}</p>
-                                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 italic">{audit.auditor}</p>
-                                        </td>
-                                        <td className="px-10 py-8 text-center">
-                                            <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${
-                                                audit.status === 'Finalizada' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 
-                                                audit.status === 'En Ejecución' ? 'bg-sky-50 text-sky-700 border-sky-100 animate-pulse' :
-                                                'bg-amber-50 text-amber-700 border-amber-100'
-                                            }`}>{audit.status}</span>
-                                        </td>
-                                        <td className="px-10 py-8 text-right">
-                                            <div className="flex justify-end gap-3">
-                                                {audit.status === 'Planificada' && (
-                                                    <button onClick={() => handleStartExecution(audit)} className="p-3 bg-sky-50 text-sky-600 rounded-2xl hover:scale-110 transition-all shadow-sm" title="Ejecutar Auditoría"><ClipboardCheckIcon /></button>
-                                                )}
-                                                <button onClick={() => { setSelectedAudit(audit); setActiveTab('report'); }} className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl hover:scale-110 transition-all shadow-sm"><ViewIcon /></button>
-                                                <button onClick={() => setAudits(prev => prev.filter(a => a.id !== audit.id))} className="p-3 bg-rose-50 text-rose-600 rounded-2xl hover:scale-110 transition-all shadow-sm"><TrashIcon /></button>
-                                            </div>
-                                        </td>
+                        {loading ? (
+                            <div className="p-10 text-center text-slate-400">Cargando auditorías...</div>
+                        ) : (
+                            <table className="w-full text-left">
+                                <thead className="bg-slate-50/50 dark:bg-white/[0.02] text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] border-b dark:border-white/5">
+                                    <tr>
+                                        <th className="px-10 py-6">Referencia</th>
+                                        <th className="px-10 py-6">Proceso / Auditor</th>
+                                        <th className="px-10 py-6 text-center">Estado ISO</th>
+                                        <th className="px-10 py-6 text-right">Acciones</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody className="divide-y dark:divide-white/5">
+                                    {audits.filter(a => a.process.toLowerCase().includes(searchTerm.toLowerCase()) || a.reportNumber.toLowerCase().includes(searchTerm.toLowerCase())).map(audit => (
+                                        <tr key={audit.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-all group">
+                                            <td className="px-10 py-8">
+                                                <p className="font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight text-sm">{audit.reportNumber}</p>
+                                                <p className="text-[9px] text-sky-600 font-black mt-1">FECHA: {audit.auditDate}</p>
+                                            </td>
+                                            <td className="px-10 py-8">
+                                                <p className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase leading-tight">{audit.process}</p>
+                                                <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 italic">{audit.auditor}</p>
+                                            </td>
+                                            <td className="px-10 py-8 text-center">
+                                                <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${audit.status === 'Finalizada' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                                    audit.status === 'En Ejecución' ? 'bg-sky-50 text-sky-700 border-sky-100 animate-pulse' :
+                                                        'bg-amber-50 text-amber-700 border-amber-100'
+                                                    }`}>{audit.status}</span>
+                                            </td>
+                                            <td className="px-10 py-8 text-right">
+                                                <div className="flex justify-end gap-3">
+                                                    {audit.status === 'Planificada' && (
+                                                        <button onClick={() => handleStartExecution(audit)} className="p-3 bg-sky-50 text-sky-600 rounded-2xl hover:scale-110 transition-all shadow-sm" title="Ejecutar Auditoría"><ClipboardCheckIcon /></button>
+                                                    )}
+                                                    <button onClick={() => { setSelectedAudit(audit); setActiveTab('report'); }} className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl hover:scale-110 transition-all shadow-sm"><ViewIcon /></button>
+                                                    <button onClick={() => handleDeleteAudit(audit.id)} className="p-3 bg-rose-50 text-rose-600 rounded-2xl hover:scale-110 transition-all shadow-sm"><TrashIcon /></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {audits.length === 0 && (
+                                        <tr><td colSpan={4} className="p-10 text-center text-slate-400">No hay auditorías registradas</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        )}
                     </div>
                 </div>
             )}
@@ -232,7 +387,7 @@ const Audits: React.FC = () => {
                         <div className="bg-white dark:bg-alco-surface p-12 rounded-[4rem] shadow-xl border border-slate-100 dark:border-white/5">
                             <div className="flex justify-between items-center mb-10">
                                 <div><h3 className="text-2xl font-black uppercase tracking-tighter">Evidencias Recopiladas</h3><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Auditando: {selectedAudit.process}</p></div>
-                                <button onClick={() => { setSelectedAudit({...selectedAudit, status: 'Finalizada'}); setAudits(prev => prev.map(a => a.id === selectedAudit.id ? {...a, status: 'Finalizada'} : a)); setActiveTab('dashboard'); }} className="px-8 py-4 bg-emerald-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-emerald-900/20 active:scale-95 transition-all">Finalizar Trabajo de Campo</button>
+                                <button onClick={() => { handleUpdateAuditStatus('Finalizada'); }} className="px-8 py-4 bg-emerald-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-emerald-900/20 active:scale-95 transition-all">Finalizar Trabajo de Campo</button>
                             </div>
                             <div className="space-y-6">
                                 {selectedAudit.findings.length === 0 ? (
@@ -248,7 +403,7 @@ const Audits: React.FC = () => {
                                                     <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${finding.type.includes('NC') ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>{finding.type}</span>
                                                     <h4 className="text-lg font-black uppercase tracking-tighter mt-3">ISO 9001:2015 - CLÁUSULA {finding.clause}</h4>
                                                 </div>
-                                                <button onClick={() => setSelectedAudit({...selectedAudit, findings: selectedAudit.findings.filter(f => f.id !== finding.id)})} className="p-2 text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><TrashIcon /></button>
+                                                {/* Deletion of findings could be added here if needed, linking to a delete handler */}
                                             </div>
                                             <p className="text-sm font-medium text-slate-700 dark:text-slate-300 leading-relaxed mb-6 italic">"{finding.description}"</p>
                                             <div className="flex items-center gap-3 p-3 bg-white dark:bg-black/20 rounded-xl border dark:border-white/5">
@@ -262,8 +417,8 @@ const Audits: React.FC = () => {
                         </div>
 
                         <div className="bg-slate-900 p-12 rounded-[4rem] text-white shadow-2xl relative overflow-hidden group">
-                             <RobotIcon className="absolute -right-10 -bottom-10 text-[15rem] opacity-5 group-hover:scale-110 transition-transform duration-700" />
-                             <div className="relative z-10 space-y-6">
+                            <RobotIcon className="absolute -right-10 -bottom-10 text-[15rem] opacity-5 group-hover:scale-110 transition-transform duration-700" />
+                            <div className="relative z-10 space-y-6">
                                 <div className="flex items-center gap-4">
                                     <div className="size-14 bg-sky-600 rounded-2xl flex items-center justify-center text-white text-2xl shadow-lg"><BrainIcon /></div>
                                     <div><h4 className="text-xl font-black uppercase tracking-tighter">Asistente de Auditoría IA</h4><p className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Motor Estratégico Alco v2.5</p></div>
@@ -277,7 +432,7 @@ const Audits: React.FC = () => {
                                         <div className="prose prose-invert prose-sm max-w-none text-slate-300 italic font-medium"><ReactMarkdown>{selectedAudit.executiveSummary}</ReactMarkdown></div>
                                     </div>
                                 )}
-                             </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -289,7 +444,7 @@ const Audits: React.FC = () => {
                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.03] rotate-[-30deg] pointer-events-none text-slate-900 dark:text-white">
                             <p className="text-[12rem] font-black uppercase tracking-[0.5em]">ALCO CONTROL</p>
                         </div>
-                        
+
                         <div className="border-[6px] border-slate-900 dark:border-white grid grid-cols-4 items-center">
                             <div className="p-10 border-r-[6px] border-slate-900 dark:border-white text-left">
                                 <p className="text-5xl font-black tracking-tighter text-slate-900 dark:text-white">ALCO</p>

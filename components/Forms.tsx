@@ -13,6 +13,8 @@ import {
     SaveIcon, GlobeIcon, XCircleIcon
 } from '../constants';
 import { useNotification } from './NotificationSystem';
+import { supabase } from '../supabaseClient';
+import BulkUploadButton from './BulkUploadButton';
 
 const SearchableSelect: React.FC<{
     label: string;
@@ -93,15 +95,54 @@ const Forms: React.FC = () => {
     });
 
     const [formData, setFormData] = useState<Omit<InspectionData, 'id'>>(INITIAL_FORM_DATA);
-    const [submissions, setSubmissions] = useState<InspectionData[]>(() => {
-        const saved = localStorage.getItem('alco_inspections_history');
-        return saved ? JSON.parse(saved) : [];
-    });
+    const [submissions, setSubmissions] = useState<InspectionData[]>([]);
     const [isCameraOpen, setCameraOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => { localStorage.setItem('alco_external_links', JSON.stringify(externalLinks)); }, [externalLinks]);
-    useEffect(() => { localStorage.setItem('alco_inspections_history', JSON.stringify(submissions)); }, [submissions]);
+
+    useEffect(() => {
+        fetchInspections();
+    }, []);
+
+    const fetchInspections = async () => {
+        setLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('field_inspections')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            const mappedData: InspectionData[] = (data || []).map(item => ({
+                id: item.id,
+                fecha: item.fecha,
+                areaProceso: item.area_proceso,
+                op: item.op,
+                planoOpc: item.plano_opc,
+                disenoReferencia: item.diseno_referencia,
+                cantTotal: item.cant_total,
+                cantRetenida: item.cant_retenida,
+                estado: item.estado,
+                defecto: item.defecto,
+                reviso: item.reviso,
+                responsable: item.responsable,
+                accionCorrectiva: item.accion_correctiva,
+                observacionSugerida: item.observacion_sugerida,
+                observacion: item.observacion,
+                photo: item.photo_url || ''
+            }));
+
+            setSubmissions(mappedData);
+        } catch (error) {
+            console.error(error);
+            addNotification({ type: 'error', title: 'Error', message: 'No se pudieron cargar las inspecciones.' });
+        } finally {
+            setLoading(false);
+        }
+    };
 
     // Modals & Links
     const handleAddExternalLink = (e: React.FormEvent) => {
@@ -216,42 +257,76 @@ const Forms: React.FC = () => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = async (id: string) => {
         if (confirm('¿Eliminar este registro de inspección permanentemente?')) {
-            setSubmissions(prev => prev.filter(s => s.id !== id));
-            addNotification({ type: 'error', title: 'REGISTRO ELIMINADO', message: 'La inspección ha sido eliminada del historial.' });
+            try {
+                const { error } = await supabase.from('field_inspections').delete().eq('id', id);
+                if (error) throw error;
+                setSubmissions(prev => prev.filter(s => s.id !== id));
+                addNotification({ type: 'error', title: 'REGISTRO ELIMINADO', message: 'La inspección ha sido eliminada del historial.' });
+            } catch (error) {
+                console.error(error);
+                addNotification({ type: 'error', title: 'Error', message: 'No se pudo eliminar el registro.' });
+            }
         }
     };
 
-    const handleSubmitGeneral = (e: React.FormEvent) => {
+    const handleSubmitGeneral = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (editingId) {
-            // Update Mode
-            const updatedSubmission: InspectionData = {
-                id: editingId,
-                ...formData
-            };
-            setSubmissions(prev => prev.map(s => s.id === editingId ? updatedSubmission : s));
-            addNotification({ type: 'success', title: 'REGISTRO ACTUALIZADO', message: `Inspección para OP #${formData.op} actualizada correctamente.` });
-            setEditingId(null);
-        } else {
-            // Create Mode (Existing Logic)
-            const planNumbers = formData.planoOpc ? parsePlanNumbers(formData.planoOpc) : [formData.planoOpc];
-            const plansToSubmit = planNumbers.length > 0 ? planNumbers : [formData.planoOpc];
+        const getDBPayload = (data: InspectionData | Omit<InspectionData, 'id'>) => ({
+            fecha: data.fecha,
+            area_proceso: data.areaProceso,
+            op: data.op,
+            plano_opc: data.planoOpc,
+            diseno_referencia: data.disenoReferencia,
+            cant_total: data.cantTotal,
+            cant_retenida: data.cantRetenida,
+            estado: data.estado,
+            defecto: data.defecto,
+            reviso: data.reviso,
+            responsable: data.responsable,
+            accion_correctiva: data.accionCorrectiva,
+            observacion_sugerida: data.observacionSugerida,
+            observacion: data.observacion,
+            photo_url: data.photo
+        });
 
-            const newSubmissions: InspectionData[] = plansToSubmit.map((plan, index) => ({
-                ...formData,
-                id: (Date.now() + index).toString(),
-                planoOpc: plan
-            }));
+        try {
+            if (editingId) {
+                // Update Mode
+                const payload = getDBPayload(formData);
+                const { error } = await supabase
+                    .from('field_inspections')
+                    .update(payload)
+                    .eq('id', editingId);
 
-            setSubmissions(prev => [...newSubmissions.reverse(), ...prev]);
-            addNotification({ type: 'success', title: 'REGISTROS GUARDADOS', message: `${newSubmissions.length} inspecciones generadas para OP #${formData.op}.` });
+                if (error) throw error;
+                addNotification({ type: 'success', title: 'REGISTRO ACTUALIZADO', message: `Inspección para OP #${formData.op} actualizada correctamente.` });
+                setEditingId(null);
+            } else {
+                // Create Mode
+                const planNumbers = formData.planoOpc ? parsePlanNumbers(formData.planoOpc) : [formData.planoOpc];
+                const plansToSubmit = planNumbers.length > 0 ? planNumbers : [formData.planoOpc];
+
+                const inserts = plansToSubmit.map(plan => getDBPayload({ ...formData, planoOpc: plan }));
+
+                const { error } = await supabase
+                    .from('field_inspections')
+                    .insert(inserts);
+
+                if (error) throw error;
+                addNotification({ type: 'success', title: 'REGISTROS GUARDADOS', message: `${inserts.length} inspecciones generadas para OP #${formData.op}.` });
+            }
+
+            fetchInspections();
+            setFormData(INITIAL_FORM_DATA);
+            setActiveFormType('none');
+
+        } catch (error) {
+            console.error(error);
+            addNotification({ type: 'error', title: 'Error', message: 'No se pudo guardar la inspección.' });
         }
-
-        setFormData(INITIAL_FORM_DATA);
-        setActiveFormType('none');
     };
 
     const inputStyles = "w-full p-3 bg-slate-50 dark:bg-[#0b0b14] border border-slate-200 dark:border-white/5 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-[#5d5fef] outline-none transition-all uppercase placeholder:text-slate-400";
@@ -312,6 +387,11 @@ const Forms: React.FC = () => {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div><Breadcrumbs crumbs={[{ label: 'Calidad', path: '/dashboard' }, { label: 'Formularios' }]} /><h1 className="text-3xl font-black text-slate-800 dark:text-white mt-2 tracking-tight">Gestión de Inspecciones</h1></div>
                 <div className="flex flex-wrap gap-2">
+                    <BulkUploadButton
+                        tableName="field_inspections"
+                        onUploadComplete={fetchInspections}
+                        label="Carga Masiva (Excel)"
+                    />
                     <button onClick={() => setIsLinksViewOpen(!isLinksViewOpen)} className={`flex items-center gap-2 px-4 py-2.5 ${isLinksViewOpen ? 'bg-slate-300 dark:bg-slate-600' : 'bg-[#4b5563] hover:bg-[#374151]'} text-white rounded-lg font-bold text-xs shadow-md transition-all`}><LinkIcon /> Enlaces Externos</button>
                     <button onClick={() => setActiveFormType('general')} className="flex items-center gap-2 px-4 py-2.5 bg-[#005c97] hover:bg-[#004a7a] text-white rounded-lg font-bold text-xs shadow-md transition-all"><PlusIcon /> Nueva Inspección</button>
                 </div>
@@ -476,7 +556,9 @@ const Forms: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                                {submissions.length === 0 ? (
+                                {loading ? (
+                                    <tr><td colSpan={14} className="px-8 py-24 text-center opacity-50"><p className="font-bold text-sm tracking-tight uppercase">Cargando inspecciones...</p></td></tr>
+                                ) : submissions.length === 0 ? (
                                     <tr><td colSpan={14} className="px-8 py-24 text-center opacity-20"><p className="font-bold text-sm tracking-tight uppercase">Base de datos operativa vacía</p></td></tr>
                                 ) : submissions.map(sub => (
                                     <tr key={sub.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-all text-[10px] font-bold">

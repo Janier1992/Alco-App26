@@ -1,8 +1,10 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import type { Column, Task, Priority, Label, UserAvatar, Attachment } from '../types';
 import Breadcrumbs from './Breadcrumbs';
-import { MAINTENANCE_COLUMNS, AVAILABLE_LABELS, PROJECT_USERS, PaperclipIcon, PlusIcon, CameraIcon, DownloadIcon, WrenchIcon, ShieldCheckIcon, DropIcon } from '../constants';
+import { AVAILABLE_LABELS, PROJECT_USERS, PaperclipIcon, PlusIcon, CameraIcon, DownloadIcon, WrenchIcon, ShieldCheckIcon, DropIcon, RobotIcon } from '../constants';
+import { supabase } from '../supabaseClient';
+import { useNotification } from './NotificationSystem';
+import BulkUploadButton from './BulkUploadButton';
 
 // --- Helper Components (Shared Logic with Projects, adapted for Maintenance) ---
 
@@ -84,7 +86,7 @@ const AttachmentPreviewModal: React.FC<{ isOpen: boolean; onClose: () => void; a
         document.body.removeChild(link);
     };
     const renderPreview = () => {
-        if (attachment.type.startsWith('image/')) return <img src={attachment.url} alt={attachment.name} className="max-w-full max-h-[60vh] mx-auto rounded-md" />;
+        if (attachment.type?.startsWith('image/')) return <img src={attachment.url} alt={attachment.name} className="max-w-full max-h-[60vh] mx-auto rounded-md" />;
         if (attachment.type === 'application/pdf') return <iframe src={attachment.url} className="w-full h-[70vh] border-0 rounded-md" title={attachment.name}></iframe>
         return (
             <div className="p-4 h-48 flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-900/50 rounded-lg border-2 border-dashed dark:border-slate-700 text-center">
@@ -151,7 +153,7 @@ const AttachmentsManager: React.FC<{ attachments: Attachment[]; onFilesAdd: (fil
                 {attachments.map(att => (
                     <button type="button" key={att.id} onClick={() => onView(att)} className="w-full flex items-center justify-between p-2 bg-slate-100 dark:bg-slate-700/50 rounded-md text-left hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
                         <div className="flex items-center gap-2 overflow-hidden">
-                            {att.type.startsWith('image/') ? <img src={att.url} alt={att.name} className="w-8 h-8 rounded object-cover flex-shrink-0" /> : <div className="w-8 h-8 bg-slate-300 dark:bg-slate-600 rounded flex items-center justify-center flex-shrink-0"><i className="fas fa-file-alt"></i></div>}
+                            {att.type?.startsWith('image/') ? <img src={att.url} alt={att.name} className="w-8 h-8 rounded object-cover flex-shrink-0" /> : <div className="w-8 h-8 bg-slate-300 dark:bg-slate-600 rounded flex items-center justify-center flex-shrink-0"><i className="fas fa-file-alt"></i></div>}
                             <div className="truncate"><p className="text-sm font-medium truncate">{att.name}</p><p className="text-xs text-slate-500 dark:text-slate-400">{(att.size / 1024 / 1024).toFixed(2)} MB</p></div>
                         </div>
                         <button onClick={(e) => { e.stopPropagation(); onRemove(att.id); }} className="p-1 rounded-full hover:bg-red-100 dark:hover:bg-red-900/50 text-red-500 flex-shrink-0 z-10">&times;</button>
@@ -249,7 +251,8 @@ const MaintenanceTaskModal: React.FC<{ isOpen: boolean; onClose: () => void; tas
                             <div>
                                 <label className={labelStyles}>Estado / Columna</label>
                                 <div className="px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-md text-sm font-semibold text-slate-600 dark:text-slate-300">
-                                    {MAINTENANCE_COLUMNS[Object.keys(MAINTENANCE_COLUMNS).find(key => MAINTENANCE_COLUMNS[key].tasks.some(t => t.id === editedTask.id)) || 'todo'].title}
+                                    {/* We don't have MAINTENANCE_COLUMNS anymore, let's just show text */}
+                                    {editedTask.id ? 'Actualizar estado arrastrando la tarjeta' : 'Nueva'}
                                 </div>
                             </div>
                             <div>
@@ -402,51 +405,198 @@ const KanbanColumn: React.FC<{ column: Column; onDragStart: (e: React.DragEvent<
 );
 
 const Maintenance: React.FC = () => {
-    const [columns, setColumns] = useState<{ [key: string]: Column }>(MAINTENANCE_COLUMNS);
+    const { addNotification } = useNotification();
+    const [columns, setColumns] = useState<{ [key: string]: Column }>({});
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [isViewModalOpen, setViewModalOpen] = useState(false);
     const [isAddModalOpen, setAddModalOpen] = useState(false);
     const [newColumnId, setNewColumnId] = useState<string | null>(null);
+    const [boardId, setBoardId] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+    const loadRef = useRef(false);
+
+    useEffect(() => {
+        if (loadRef.current) return;
+        loadRef.current = true;
+        fetchBoardData();
+    }, []);
+
+    const fetchBoardData = async () => {
+        try {
+            setLoading(true);
+            const { data: boardData, error: boardError } = await supabase
+                .from('boards')
+                .select('id')
+                .eq('type', 'maintenance')
+                .single();
+
+            if (boardError || !boardData) {
+                console.error("Board not found:", boardError);
+                return;
+            }
+            setBoardId(boardData.id);
+
+            const { data: colsData, error: colsError } = await supabase
+                .from('board_columns')
+                .select('*')
+                .eq('board_id', boardData.id)
+                .order('position');
+
+            if (colsError) throw colsError;
+
+            let finalColumns = colsData || [];
+            if (finalColumns.length === 0) {
+                const defaults = ['Solicitudes', 'En Proceso', 'Espera de Repuestos', 'Finalizado'];
+                for (let i = 0; i < defaults.length; i++) {
+                    const { data } = await supabase.from('board_columns').insert({
+                        board_id: boardData.id,
+                        title: defaults[i],
+                        position: i
+                    }).select().single();
+                    if (data) finalColumns.push(data);
+                }
+            }
+
+            const colIds = finalColumns.map(c => c.id);
+            const { data: tasksData, error: tasksError } = await supabase
+                .from('board_tasks')
+                .select(`
+                    *,
+                    labels:task_labels(*),
+                    assignedUsers:task_assignees(*),
+                    checklist:task_checklists(*),
+                    attachments:task_attachments(*),
+                    comments:task_comments(*)
+                `)
+                .in('column_id', colIds)
+                .order('position');
+
+            if (tasksError) throw tasksError;
+
+            const newColumnsState: { [key: string]: Column } = {};
+            finalColumns.forEach(col => {
+                const colTasks = tasksData?.filter(t => t.column_id === col.id).map(t => ({
+                    id: t.id,
+                    title: t.title,
+                    description: t.description || '',
+                    priority: t.priority as Priority,
+                    dueDate: t.due_date,
+                    labels: t.labels || [],
+                    assignedUsers: t.assignedUsers?.map((u: any) => ({
+                        id: u.user_id || u.id,
+                        initials: u.user_initials || '??'
+                    })) || [],
+                    checklist: t.checklist || [],
+                    attachments: t.attachments || [],
+                    comments: t.comments || [],
+                    assetId: t.asset_id,
+                    type: t.maintenance_type
+                })) || [];
+
+                newColumnsState[col.id] = {
+                    id: col.id,
+                    title: col.title,
+                    tasks: colTasks
+                };
+            });
+
+            setColumns(newColumnsState);
+
+        } catch (error) {
+            console.error(error);
+            addNotification({ type: 'error', title: 'Error', message: 'No se pudieron cargar los datos.' });
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleDragStart = (e: React.DragEvent<HTMLDivElement>, taskId: string, sourceColumnId: string) => { e.dataTransfer.setData("taskId", taskId); e.dataTransfer.setData("sourceColumnId", sourceColumnId); };
     const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
     const handleDrop = (e: React.DragEvent<HTMLDivElement>, destinationColumnId: string) => {
         const taskId = e.dataTransfer.getData("taskId");
         const sourceColumnId = e.dataTransfer.getData("sourceColumnId");
-        if (sourceColumnId === destinationColumnId) return;
-        let taskToMove: Task;
-        const newColumns = { ...columns };
-        const sourceColumn = newColumns[sourceColumnId as keyof typeof newColumns];
-        const taskIndex = sourceColumn.tasks.findIndex(t => t.id === taskId);
-        if (taskIndex > -1) {
-            [taskToMove] = sourceColumn.tasks.splice(taskIndex, 1);
-            newColumns[destinationColumnId as keyof typeof newColumns].tasks.push(taskToMove);
-            setColumns(newColumns);
+        moveTask(taskId, sourceColumnId, destinationColumnId);
+    };
+
+    const moveTask = async (taskId: string, sourceColId: string, destColId: string) => {
+        if (sourceColId === destColId) return;
+        const sourceCol = columns[sourceColId];
+        const destCol = columns[destColId];
+        const taskToMove = sourceCol.tasks.find(t => t.id === taskId);
+
+        if (taskToMove) {
+            setColumns({
+                ...columns,
+                [sourceColId]: { ...sourceCol, tasks: sourceCol.tasks.filter(t => t.id !== taskId) },
+                [destColId]: { ...destCol, tasks: [...destCol.tasks, taskToMove] }
+            });
+
+            await supabase.from('board_tasks').update({ column_id: destColId }).eq('id', taskId);
+            addNotification({ type: 'info', title: 'Orden Movida', message: `Nueva ubicación: ${destCol.title}` });
         }
     };
 
-    const handleUpdateTask = (updatedTask: Task) => {
+    const handleUpdateTask = async (updatedTask: Task) => {
         const newColumns = { ...columns };
         for (const colId in newColumns) {
             const idx = newColumns[colId].tasks.findIndex(t => t.id === updatedTask.id);
             if (idx !== -1) { newColumns[colId].tasks[idx] = updatedTask; break; }
         }
         setColumns(newColumns);
+
+        await supabase.from('board_tasks').update({
+            title: updatedTask.title,
+            description: updatedTask.description,
+            priority: updatedTask.priority,
+            due_date: updatedTask.dueDate,
+            asset_id: updatedTask.assetId,
+            maintenance_type: updatedTask.type
+        }).eq('id', updatedTask.id);
+        addNotification({ type: 'success', title: 'Orden Actualizada', message: 'Los cambios han sido guardados.' });
     };
 
-    const handleDeleteTask = (taskId: string) => {
+    const handleDeleteTask = async (taskId: string) => {
         const newColumns = { ...columns };
         for (const colId in newColumns) { newColumns[colId].tasks = newColumns[colId].tasks.filter(t => t.id !== taskId); }
         setColumns(newColumns);
+
+        await supabase.from('board_tasks').delete().eq('id', taskId);
+        addNotification({ type: 'error', title: 'Orden Eliminada', message: 'El registro ha sido eliminado.' });
     };
 
-    const handleAddTask = (title: string, priority: Priority, type: string, assetId: string) => {
-        if (!newColumnId) return;
-        const newTask: Task = { id: Date.now().toString(), title, priority, type: type as any, assetId, description: '', dueDate: new Date().toISOString().split('T')[0], labels: [], assignedUsers: [], attachments: [] };
-        const newColumns = { ...columns };
-        newColumns[newColumnId].tasks.push(newTask);
-        setColumns(newColumns);
+    const handleAddTask = async (title: string, priority: Priority, type: string, assetId: string) => {
+        if (!newColumnId || !boardId) return;
+
+        const { data } = await supabase.from('board_tasks').insert({
+            column_id: newColumnId,
+            title,
+            priority,
+            maintenance_type: type,
+            asset_id: assetId,
+            description: '',
+            due_date: new Date().toISOString().split('T')[0]
+        }).select().single();
+
+        if (data) {
+            const newTask: Task = {
+                id: data.id,
+                title: data.title,
+                priority: data.priority as Priority,
+                type: data.maintenance_type,
+                assetId: data.asset_id,
+                description: data.description,
+                dueDate: data.due_date,
+                labels: [],
+                assignedUsers: [],
+                attachments: []
+            };
+            const newColumns = { ...columns };
+            newColumns[newColumnId].tasks.push(newTask);
+            setColumns(newColumns);
+        }
     };
+
+    if (loading) return <div className="h-full flex items-center justify-center"><RobotIcon className="text-6xl text-slate-300 animate-bounce" /></div>;
 
     return (
         <div className="h-full flex flex-col">
@@ -456,6 +606,29 @@ const Maintenance: React.FC = () => {
                     <div>
                         <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-100">Tablero de Mantenimiento</h1>
                         <p className="text-slate-500 dark:text-slate-400">Gestión visual de órdenes de trabajo (Trello-Style).</p>
+                    </div>
+                    <div className="flex gap-4">
+                        <BulkUploadButton
+                            tableName="board_tasks"
+                            label="Importar Órdenes"
+                            onUploadComplete={fetchBoardData}
+                            mapping={(row: any) => {
+                                const firstColId = Object.keys(columns)[0];
+                                if (!boardId || !firstColId) {
+                                    console.error("Board info missing for upload");
+                                    return row;
+                                }
+                                return {
+                                    column_id: firstColId,
+                                    title: row.Title || row.title || row.Titulo || 'Orden Importada',
+                                    description: row.Description || row.description || row.Descripcion || '',
+                                    priority: row.Priority || row.priority || row.Prioridad || 'Media',
+                                    maintenance_type: row.Type || row.type || row.Tipo || 'Correctivo',
+                                    asset_id: row.AssetID || row.asset_id || row.Activo || '',
+                                    due_date: row.DueDate || row.due_date || row.FechaLimite || new Date().toISOString().split('T')[0]
+                                };
+                            }}
+                        />
                     </div>
                 </div>
             </div>

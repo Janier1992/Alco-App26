@@ -1,8 +1,7 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Breadcrumbs from './Breadcrumbs';
 import {
-    MOCK_SUPERVISOR_TASKS, MOCK_INSIGHTS,
+    MOCK_SUPERVISOR_TASKS,
     CheckCircleIcon, ExclamationTriangleIcon, ClipboardListIcon,
     BrainIcon, LightbulbIcon, GraduationCapIcon, ChevronRightIcon,
     RobotIcon
@@ -10,6 +9,8 @@ import {
 import type { SupervisorTask, OperationalInsight } from '../types';
 import { GoogleGenAI } from "@google/genai";
 import ReactMarkdown from 'react-markdown';
+import { supabase } from '../supabaseClient';
+import { useNotification } from './NotificationSystem';
 
 const PriorityBadge: React.FC<{ priority: string }> = ({ priority }) => {
     const styles = {
@@ -50,16 +51,53 @@ const ISOCard: React.FC<{ reference: SupervisorTask['isoReference'], onClose: ()
     </div>
 );
 
-
-
-// ... (existing imports)
-
 const OperationalIntelligence: React.FC = () => {
+    const { addNotification } = useNotification();
     const [tasks, setTasks] = useState(MOCK_SUPERVISOR_TASKS);
+    const [insights, setInsights] = useState<OperationalInsight[]>([]);
     const [selectedISO, setSelectedISO] = useState<SupervisorTask['isoReference'] | null>(null);
     const [score, setScore] = useState(78); // Gamified Score
     const [isGenerating, setIsGenerating] = useState(false);
     const [aiRecommendations, setAiRecommendations] = useState<string | null>(null);
+    const [loadingInsights, setLoadingInsights] = useState(false);
+
+    useEffect(() => {
+        fetchInsights();
+    }, []);
+
+    const fetchInsights = async () => {
+        setLoadingInsights(true);
+        try {
+            const { data, error } = await supabase
+                .from('operational_insights')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            if (data && data.length > 0) {
+                const mappedInsights: OperationalInsight[] = data.map(i => ({
+                    id: i.id,
+                    title: i.title,
+                    description: i.description || '',
+                    frequency: i.frequency || 'N/A',
+                    correction: i.correction || ''
+                }));
+                setInsights(mappedInsights);
+            } else {
+                // If no data in DB, we could leave empty or fallback. 
+                // For now, let's leave empty to encourage DB usage, 
+                // or if the user prefers, we could insert defaults? 
+                // Let's stick to empty but show a message or valid empty state.
+            }
+
+        } catch (error) {
+            console.error('Error fetching insights:', error);
+            addNotification({ type: 'error', title: 'Error', message: 'No se pudieron cargar los insights.' });
+        } finally {
+            setLoadingInsights(false);
+        }
+    };
 
     const handleCompleteTask = (id: string) => {
         setTasks(prev => prev.map(t => t.id === id ? { ...t, status: 'Done' } : t));
@@ -69,7 +107,8 @@ const OperationalIntelligence: React.FC = () => {
     const generateAiInsights = async () => {
         setIsGenerating(true);
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const apiKey = import.meta.env.VITE_GOOGLE_API_KEY || 'YOUR_API_KEY';
+            const ai = new GoogleGenAI({ apiKey });
             const pendingParams = tasks.filter(t => t.status === 'Pending').map(t => t.title).join(', ');
             const prompt = `Actúa como Supervisor Senior de Calidad. Tengo un Score de Cumplimiento de ${score}/100.
             Tareas pendientes críticas: ${pendingParams}.
@@ -77,12 +116,13 @@ const OperationalIntelligence: React.FC = () => {
             Usa formato Markdown con viñetas.`;
 
             const response = await ai.models.generateContent({
-                model: 'gemini-1.5-flash',
+                model: 'gemini-2.0-flash-exp',
                 contents: prompt
             });
 
-            setAiRecommendations(response.text);
+            setAiRecommendations(response.text());
         } catch (error) {
+            console.error(error);
             setAiRecommendations("⚠️ No pude conectar con el cerebro de operaciones. Verifica tu conexión.");
         } finally {
             setIsGenerating(false);
@@ -196,22 +236,30 @@ const OperationalIntelligence: React.FC = () => {
                         <h2 className="text-lg font-bold text-amber-800 dark:text-amber-200 mb-4 flex items-center gap-2">
                             <LightbulbIcon /> Anomalías Recurrentes
                         </h2>
-                        <div className="space-y-4">
-                            {MOCK_INSIGHTS.map(insight => (
-                                <div key={insight.id} className="bg-white dark:bg-slate-800 p-4 rounded-lg shadow-sm border-l-4 border-amber-400">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm">{insight.title}</h4>
-                                        <span className="text-[10px] bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded text-slate-500">{insight.frequency}</span>
-                                    </div>
-                                    <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">{insight.description}</p>
+                        {loadingInsights ? (
+                            <div className="text-center py-4 text-slate-500 text-sm">Cargando insights...</div>
+                        ) : (
+                            <div className="space-y-4">
+                                {insights.length > 0 ? (
+                                    insights.map(insight => (
+                                        <div key={insight.id} className="bg-white dark:bg-slate-800 p-4 rounded-lg shadow-sm border-l-4 border-amber-400">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm">{insight.title}</h4>
+                                                <span className="text-[10px] bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded text-slate-500">{insight.frequency}</span>
+                                            </div>
+                                            <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">{insight.description}</p>
 
-                                    <div className="bg-blue-50 dark:bg-blue-900/20 p-2 rounded text-xs text-blue-800 dark:text-blue-200 flex gap-2">
-                                        <i className="fas fa-info-circle mt-0.5"></i>
-                                        <span>{insight.correction}</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+                                            <div className="bg-blue-50 dark:bg-blue-900/20 p-2 rounded text-xs text-blue-800 dark:text-blue-200 flex gap-2">
+                                                <i className="fas fa-info-circle mt-0.5"></i>
+                                                <span>{insight.correction}</span>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="p-4 text-center text-slate-500 text-xs">No hay anomalías registradas.</div>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">

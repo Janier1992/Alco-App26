@@ -206,7 +206,7 @@ const AgentHub: React.FC = () => {
             console.error("AI Error:", error);
             const apiKeyPresent = !!process.env.API_KEY;
             console.log("API Key present:", apiKeyPresent);
-            setMessages(prev => [...prev, { id: 'err', role: 'agent', content: `⚠️ Error de conexión: ${error.message || 'Desconocido'}. (Key: ${apiKeyPresent ? 'OK' : 'MISSING'})` }]);
+            setMessages(prev => [...prev, { id: 'err', role: 'agent', content: `⚠️ Error de conexión: ${error.message || 'Desconocido'}. (Key Presente: ${apiKeyPresent ? 'SÍ' : 'NO'})` }]);
         } finally {
             setIsProcessing(false);
         }
