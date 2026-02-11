@@ -19,6 +19,7 @@ import AgentHub from './components/AgentHub';
 import Installations from './components/Installations';
 import Projects from './components/Projects';
 import QualityClaims from './components/QualityClaims';
+import AIConnectionTest from './components/AIConnectionTest';
 
 
 import type { User, NavItem } from './types';
@@ -124,8 +125,6 @@ const App: React.FC = () => {
         setUsers([...users, u]);
         return u;
     };
-
-    import AIConnectionTest from './components/AIConnectionTest';
 
     // ... inside App component return:
     return (
