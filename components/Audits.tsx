@@ -257,7 +257,7 @@ const Audits: React.FC = () => {
             const apiKey = import.meta.env.VITE_GOOGLE_API_KEY || 'YOUR_API_KEY';
             const ai = new GoogleGenAI({ apiKey });
             const prompt = `Actúa como Auditor Líder ISO 9001. Genera un "Resumen Ejecutivo de Auditoría" profesional para el proceso "${selectedAudit.process}". Hallazgos detectados: ${JSON.stringify(selectedAudit.findings)}. El tono debe ser formal, destacando la madurez del sistema y áreas de mejora. Máximo 150 palabras en formato Markdown.`;
-            const response = await ai.models.generateContent({ model: 'gemini-2.0-flash-exp', contents: prompt });
+            const response = await ai.models.generateContent({ model: 'gemini-1.5-flash-001', contents: prompt });
             const summary = response.text;
 
             const { error } = await supabase

@@ -116,7 +116,7 @@ const OperationalIntelligence: React.FC = () => {
             Usa formato Markdown con viñetas.`;
 
             const response = await ai.models.generateContent({
-                model: 'gemini-2.0-flash-exp',
+                model: 'gemini-1.5-flash-001',
                 contents: prompt
             });
 

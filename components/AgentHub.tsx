@@ -177,7 +177,7 @@ const AgentHub: React.FC = () => {
             }
 
             const response = await ai.models.generateContent({
-                model: 'gemini-2.0-flash-exp', // Stable model for text
+                model: 'gemini-1.5-flash-001', // Standard stable version
                 contents: { parts },
                 config: {
                     systemInstruction: getSystemContext(useGoogleSearch, location.pathname, activeAgent),
