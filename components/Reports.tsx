@@ -55,7 +55,7 @@ const ReportGenerator: React.FC = () => {
             Estructura: 1. Resumen Gerencial, 2. Análisis de Riesgos en ${mockContext.topProcess}, 3. Tres Recomendaciones de Mejora Continua. Usa Markdown profesional.`;
 
             const response = await ai.models.generateContent({
-                model: 'gemini-2.0-flash',
+                model: 'gemini-2.0-flash-exp',
                 contents: prompt
             });
 

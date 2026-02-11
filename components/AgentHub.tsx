@@ -177,7 +177,7 @@ const AgentHub: React.FC = () => {
             }
 
             const response = await ai.models.generateContent({
-                model: 'gemini-2.0-flash', // Updated to latest Flash model
+                model: 'gemini-2.0-flash-exp', // Reverting to experimental model for stability
                 contents: { parts },
                 config: {
                     systemInstruction: getSystemContext(useGoogleSearch, location.pathname, activeAgent),
@@ -202,8 +202,11 @@ const AgentHub: React.FC = () => {
             };
             setMessages(prev => [...prev, agentMsg]);
             setAttachedImage(null);
-        } catch (error) {
-            setMessages(prev => [...prev, { id: 'err', role: 'agent', content: '⚠️ Error de conexión con el núcleo de IA. Verifica tu red.' }]);
+        } catch (error: any) {
+            console.error("AI Error:", error);
+            const apiKeyPresent = !!process.env.API_KEY;
+            console.log("API Key present:", apiKeyPresent);
+            setMessages(prev => [...prev, { id: 'err', role: 'agent', content: `⚠️ Error de conexión: ${error.message || 'Desconocido'}. (Key: ${apiKeyPresent ? 'OK' : 'MISSING'})` }]);
         } finally {
             setIsProcessing(false);
         }
