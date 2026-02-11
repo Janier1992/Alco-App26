@@ -125,8 +125,12 @@ const App: React.FC = () => {
         return u;
     };
 
+    import AIConnectionTest from './components/AIConnectionTest';
+
+    // ... inside App component return:
     return (
         <ThemeProvider>
+            <AIConnectionTest />
             <NotificationProvider>
                 <AgentProvider>
                     <HashRouter>
