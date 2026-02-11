@@ -156,7 +156,6 @@ const App: React.FC = () => {
                                 <Route path="installations" element={<Installations />} />
                             </Route>
                         </Routes>
-                        <ReloadPrompt />
                     </HashRouter>
                 </AgentProvider>
             </NotificationProvider>
