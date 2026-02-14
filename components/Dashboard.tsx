@@ -12,15 +12,16 @@ import {
 import { useTheme } from './ThemeContext';
 
 const StatCard: React.FC<{ title: string; value: string; subtext: string; icon: React.FC; color: string }> = ({ title, value, subtext, icon: Icon, color }) => (
-    <div className="relative overflow-hidden bg-white dark:bg-alco-surface rounded-2xl p-6 border border-slate-100 dark:border-white/5 shadow-sm group hover:-translate-y-1 transition-all duration-300">
-        <div className={`absolute top-4 right-4 p-2 rounded-xl ${color} bg-opacity-10 text-opacity-100`}>
+    <div className="premium-card p-6 group hover:-translate-y-1 transition-all duration-300 shadow-sm relative overflow-hidden">
+        <div className={`absolute top-4 right-4 p-3 rounded-2xl ${color} bg-opacity-10 text-opacity-100 transition-transform group-hover:scale-110`}>
             {/* @ts-ignore */}
             <Icon className={`w-5 h-5 ${color.replace('bg-', 'text-')}`} />
         </div>
-        <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">{title}</p>
-        <h3 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight mb-2">{value}</h3>
-        <p className="text-[10px] font-semibold text-slate-400">{subtext}</p>
-        <div className={`absolute bottom-0 left-0 w-full h-1 ${color} opacity-0 group-hover:opacity-100 transition-opacity`}></div>
+        <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-1.5">{title}</p>
+        <h3 className="text-3xl font-black text-slate-800 dark:text-white tracking-tighter mb-2">{value}</h3>
+        <p className="text-[10px] font-bold text-slate-400 flex items-center gap-1.5 uppercase">
+            <span className={`w-1.5 h-1.5 rounded-full ${color}`}></span> {subtext}
+        </p>
     </div>
 );
 
@@ -33,17 +34,17 @@ const CollaboratorAvatar: React.FC<{ user: typeof MOCK_COLLABORATORS[0] }> = ({ 
     };
 
     return (
-        <div className="flex flex-col items-center gap-2 min-w-[80px]">
+        <div className="flex flex-col items-center gap-2 min-w-[80px] p-2 rounded-2xl hover:bg-slate-50 dark:hover:bg-white/5 transition-all transition-colors cursor-pointer">
             <div className="relative">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-white/10 dark:to-white/5 flex items-center justify-center text-slate-600 dark:text-white font-black text-sm border border-white dark:border-white/10 shadow-lg">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 dark:from-white/10 dark:to-white/5 flex items-center justify-center text-slate-600 dark:text-white font-black text-sm border border-white dark:border-white/10 shadow-md">
                     {user.avatar}
                 </div>
                 {/* @ts-ignore */}
-                <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white dark:border-[#0f172a] ${statusColors[user.status]}`}></div>
+                <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white dark:border-[#0b0b14] shadow-sm ${statusColors[user.status]}`}></div>
             </div>
             <div className="text-center">
-                <p className="text-[10px] font-bold text-slate-700 dark:text-slate-200 truncate max-w-[80px] leading-tight">{user.name}</p>
-                <p className="text-[9px] font-medium text-slate-400 dark:text-slate-500 truncate max-w-[80px]">{user.role}</p>
+                <p className="text-[10px] font-black text-slate-700 dark:text-slate-100 truncate max-w-[80px] leading-tight uppercase tracking-tight">{user.name.split(' ')[0]}</p>
+                <p className="text-[8px] font-bold text-slate-400 dark:text-slate-500 truncate max-w-[80px] uppercase tracking-widest">{user.role}</p>
             </div>
         </div>
     );
@@ -114,13 +115,13 @@ const Dashboard: React.FC<{ user: User }> = ({ user }) => {
                     </div>
 
                     {/* MAIN CHART */}
-                    <div className="bg-white dark:bg-alco-surface rounded-3xl p-6 md:p-8 border border-slate-100 dark:border-white/5 shadow-sm">
+                    <div className="premium-card p-6 md:p-8 shadow-sm">
                         <div className="flex justify-between items-center mb-6">
                             <div>
-                                <h3 className="text-lg font-black text-slate-900 dark:text-white">Rendimiento de Calidad</h3>
-                                <p className="text-xs text-slate-400 font-medium">Tendencia de los últimos 7 días</p>
+                                <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">Rendimiento de Calidad</h3>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1">Tendencia de los últimos 7 días</p>
                             </div>
-                            <select className="bg-slate-50 dark:bg-white/5 border-none text-xs font-bold rounded-lg px-3 py-1.5 text-slate-600 dark:text-slate-300 outline-none">
+                            <select className="bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-[10px] font-black uppercase tracking-widest rounded-xl px-4 py-2 text-slate-600 dark:text-slate-300 outline-none">
                                 <option>Última Semana</option>
                                 <option>Último Mes</option>
                             </select>
@@ -130,18 +131,18 @@ const Dashboard: React.FC<{ user: User }> = ({ user }) => {
                                 <AreaChart data={MOCK_CHART_DATA.qualityTrend}>
                                     <defs>
                                         <linearGradient id="colorTrendMain" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#5d5fef" stopOpacity={0.3} />
+                                            <stop offset="5%" stopColor="#5d5fef" stopOpacity={0.2} />
                                             <stop offset="95%" stopColor="#5d5fef" stopOpacity={0} />
                                         </linearGradient>
                                     </defs>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} opacity={0.5} />
-                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} dy={10} />
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? 'rgba(255,255,255,0.05)' : '#e2e8f0'} />
+                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#94a3b8', fontWeight: 'bold' }} dy={10} />
                                     <YAxis hide domain={[80, 100]} />
                                     <Tooltip
-                                        contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#fff', borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
-                                        labelStyle={{ color: '#94a3b8', fontSize: '10px', fontWeight: 'bold' }}
+                                        contentStyle={{ backgroundColor: theme === 'dark' ? '#0b0b14' : '#fff', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}
+                                        labelStyle={{ color: '#94a3b8', fontSize: '9px', fontWeight: 'bold', textTransform: 'uppercase' }}
                                     />
-                                    <Area type="monotone" dataKey="value" stroke="#5d5fef" strokeWidth={3} fill="url(#colorTrendMain)" />
+                                    <Area type="monotone" dataKey="value" stroke="#5d5fef" strokeWidth={4} fill="url(#colorTrendMain)" animationDuration={2000} />
                                 </AreaChart>
                             </ResponsiveContainer>
                         </div>
@@ -152,12 +153,12 @@ const Dashboard: React.FC<{ user: User }> = ({ user }) => {
                 <div className="lg:col-span-4 space-y-8">
 
                     {/* COLLABORATORS */}
-                    <div className="bg-white dark:bg-alco-surface rounded-3xl p-6 border border-slate-100 dark:border-white/5 shadow-sm">
+                    <div className="premium-card p-6 shadow-sm">
                         <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">Equipo en Línea</h3>
-                            <button className="text-[#5d5fef] text-xs font-bold hover:underline">Ver Todos</button>
+                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Equipo en Línea</h3>
+                            <button className="text-[#5d5fef] text-[10px] font-black uppercase tracking-widest hover:underline">Ver Todos</button>
                         </div>
-                        <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar snap-x">
+                        <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar snap-x">
                             {MOCK_COLLABORATORS.map(collab => (
                                 <div key={collab.id} className="snap-start">
                                     <CollaboratorAvatar user={collab} />
@@ -167,9 +168,9 @@ const Dashboard: React.FC<{ user: User }> = ({ user }) => {
                     </div>
 
                     {/* ACTIVITY FEED */}
-                    <div className="bg-white dark:bg-alco-surface rounded-3xl p-6 border border-slate-100 dark:border-white/5 shadow-sm flex-1">
+                    <div className="premium-card p-6 shadow-sm flex-1">
                         <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">Actividad Reciente</h3>
+                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Actividad Reciente</h3>
                             <div className="w-2 h-2 rounded-full bg-[#5d5fef] animate-ping"></div>
                         </div>
                         <div className="space-y-2">
@@ -177,7 +178,7 @@ const Dashboard: React.FC<{ user: User }> = ({ user }) => {
                                 <ActivityItem key={bg.id} activity={bg} />
                             ))}
                         </div>
-                        <button className="w-full mt-6 py-3 rounded-xl border border-slate-200 dark:border-white/10 text-xs font-bold text-slate-500 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
+                        <button className="w-full mt-8 py-4 rounded-2xl border border-slate-200 dark:border-white/5 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5 transition-all">
                             Ver Historial Completo
                         </button>
                     </div>

@@ -20,6 +20,7 @@ import Installations from './components/Installations';
 import Projects from './components/Projects';
 import Maintenance from './components/Maintenance';
 import QualityClaims from './components/QualityClaims';
+import AdminSettings from './components/AdminSettings';
 
 
 import type { User, NavItem } from './types';
@@ -154,6 +155,7 @@ const App: React.FC = () => {
                                 <Route path="maintenance/board" element={<Maintenance />} />
 
                                 <Route path="installations" element={<Installations />} />
+                                <Route path="settings" element={<AdminSettings />} />
                             </Route>
                         </Routes>
                     </HashRouter>

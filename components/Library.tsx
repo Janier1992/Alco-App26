@@ -179,8 +179,8 @@ const Library: React.FC = () => {
         addNotification({ type: 'info', title: 'COPILOT ACTIVADO', message: `Analizando ${doc.code} con IA...` });
     };
 
-    const inputStyles = "w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-sky-500 outline-none uppercase placeholder:text-slate-400";
-    const labelStyles = "text-[10px] font-black text-slate-500 dark:text-slate-500 uppercase tracking-widest mb-1 block ml-1";
+    const inputStyles = "w-full p-4 bg-slate-50 dark:bg-[#1a1a24] border border-slate-200 dark:border-white/5 rounded-2xl text-xs font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-[#5d5fef] outline-none uppercase transition-all placeholder:text-slate-400";
+    const labelStyles = "text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 block ml-1";
 
     return (
         <div className="space-y-8 animate-fade-in pb-20">
@@ -191,13 +191,13 @@ const Library: React.FC = () => {
                     <h1 className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white uppercase tracking-tighter leading-none">Explorador de <span className="text-sky-600">Documentos</span></h1>
                     <p className="text-slate-500 font-bold mt-2 uppercase text-xs tracking-widest">Control de información documentada ISO 9001:2015</p>
                 </div>
-                <div className="flex gap-3">
-                    <button onClick={() => window.location.reload()} className="p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-400 hover:text-sky-600 transition-colors shadow-sm">
+                <div className="flex gap-3 w-full md:w-auto">
+                    <button onClick={() => window.location.reload()} className="p-4 bg-white dark:bg-alco-surface border border-slate-200 dark:border-white/5 rounded-2xl text-slate-400 hover:text-[#5d5fef] transition-all shadow-sm">
                         <RefreshIcon />
                     </button>
                     <button
                         onClick={handleUploadClick}
-                        className="px-8 py-3 bg-sky-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl shadow-sky-600/20 hover:scale-105 flex items-center gap-2"
+                        className="flex-grow md:flex-none px-8 py-4 bg-[#5d5fef] text-white rounded-[2rem] text-[10px] font-black uppercase tracking-widest transition-all shadow-xl shadow-[#5d5fef]/20 hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
                     >
                         <i className="fas fa-upload"></i> Nueva Versión
                     </button>
@@ -207,20 +207,20 @@ const Library: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 {/* Sidebar - Categorías */}
                 <div className="lg:col-span-3 space-y-6">
-                    <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-6 rounded-[2.5rem] shadow-sm">
+                    <div className="premium-card p-6 shadow-sm">
                         <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6 px-2">Categorías SGC</h3>
-                        <div className="space-y-1">
+                        <div className="grid grid-cols-2 lg:grid-cols-1 gap-2">
                             {categories.map(cat => (
                                 <button
                                     key={cat.id}
                                     onClick={() => setSelectedCategory(cat.id as any)}
-                                    className={`w-full flex items-center justify-between p-3.5 rounded-2xl transition-all group ${selectedCategory === cat.id ? 'bg-sky-50 dark:bg-sky-900/30 text-sky-600' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-white/5'}`}
+                                    className={`flex items-center justify-between p-3.5 rounded-2xl transition-all group ${selectedCategory === cat.id ? 'bg-[#5d5fef]/10 text-[#5d5fef]' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-white/5'}`}
                                 >
-                                    <div className="flex items-center gap-3">
-                                        <i className={`${cat.icon} text-sm ${selectedCategory === cat.id ? 'text-sky-600' : 'text-amber-500'}`}></i>
-                                        <span className="text-xs font-black uppercase tracking-tight">{cat.label}</span>
+                                    <div className="flex items-center gap-3 truncate">
+                                        <i className={`${cat.icon} text-sm ${selectedCategory === cat.id ? 'text-[#5d5fef]' : 'text-slate-400'}`}></i>
+                                        <span className="text-[10px] font-black uppercase tracking-tight truncate">{cat.label}</span>
                                     </div>
-                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${selectedCategory === cat.id ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
+                                    <span className={`hidden sm:inline text-[9px] font-bold px-2 py-0.5 rounded-full ${selectedCategory === cat.id ? 'bg-[#5d5fef]/20 text-[#5d5fef]' : 'bg-slate-100 dark:bg-white/5 text-slate-400'}`}>
                                         {cat.count}
                                     </span>
                                 </button>
@@ -233,20 +233,61 @@ const Library: React.FC = () => {
                 <div className="lg:col-span-9 space-y-6">
                     <div className="relative group">
                         <input
-                            className="w-full pl-14 pr-6 py-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-none rounded-[2.5rem] shadow-sm text-sm font-bold text-slate-800 dark:text-white focus:ring-2 focus:ring-sky-500 transition-all outline-none"
+                            className="w-full pl-14 pr-6 py-5 bg-white dark:bg-alco-surface border border-slate-200 dark:border-white/5 rounded-[2.5rem] shadow-sm text-sm font-bold text-slate-800 dark:text-white focus:ring-2 focus:ring-[#5d5fef] transition-all outline-none"
                             placeholder="Buscar por código (ej: PL-TH) o nombre de documento..."
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
                         />
-                        <div className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-hover:text-sky-500 transition-colors text-xl">
+                        <div className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-hover:text-[#5d5fef] transition-colors text-xl">
                             <SearchIcon />
                         </div>
                     </div>
 
-                    <div className="bg-white dark:bg-slate-900 rounded-[3rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left">
-                                <thead className="bg-slate-50/50 dark:bg-slate-800/50 text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] border-b dark:border-slate-700">
+                    <div className="premium-card overflow-hidden animate-fade-in shadow-xl">
+                        {/* VISTA MÓVIL: TARJETAS */}
+                        <div className="md:hidden p-4 space-y-4">
+                            {filteredDocs.length === 0 ? (
+                                <div className="text-center py-12 opacity-30 text-xs font-black uppercase tracking-[0.3em]">Sin documentos</div>
+                            ) : (
+                                filteredDocs.map(doc => {
+                                    const isoStatus = getDocStatus(doc);
+                                    return (
+                                        <div key={doc.id} className="bg-slate-50 dark:bg-white/5 p-6 rounded-2xl border dark:border-white/5 space-y-4">
+                                            <div className="flex justify-between items-start">
+                                                <div className="size-10 bg-rose-50 dark:bg-rose-900/20 rounded-xl flex items-center justify-center text-rose-500">
+                                                    <i className="fas fa-file-pdf text-lg"></i>
+                                                </div>
+                                                <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase border ${isoStatus === 'Aprobado' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : isoStatus === 'CADUCADO' ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                                                    {isoStatus}
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="text-[10px] font-black text-[#5d5fef] uppercase tracking-tight">{doc.code}</span>
+                                                    <span className="text-[10px] font-black text-slate-400 uppercase">{doc.version}</span>
+                                                </div>
+                                                <h4 className="font-black text-slate-800 dark:text-white uppercase text-sm tracking-tight">{doc.name}</h4>
+                                            </div>
+                                            <div className="pt-4 border-t dark:border-white/5 flex justify-between items-center">
+                                                <span className={`text-[9px] font-black uppercase ${isoStatus === 'CADUCADO' ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                    Vence: {doc.validUntil || 'NA'}
+                                                </span>
+                                                <div className="flex gap-1">
+                                                    <button onClick={() => handleConsultAI(doc)} className="p-2.5 bg-white dark:bg-white/5 text-indigo-500 rounded-xl transition-all border dark:border-white/5"><RobotIcon className="scale-75" /></button>
+                                                    <button onClick={() => setDocToView(doc)} className="p-2.5 bg-white dark:bg-white/5 text-slate-400 rounded-xl transition-all border dark:border-white/5"><ViewIcon className="scale-75" /></button>
+                                                    <button onClick={() => handleDownload(doc)} className="p-2.5 bg-white dark:bg-white/5 text-sky-600 rounded-xl transition-all border dark:border-white/5"><DownloadIcon className="scale-75" /></button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+
+                        {/* VISTA DESKTOP: TABLA */}
+                        <div className="hidden md:block responsive-table-container">
+                            <table className="w-full text-left min-w-[900px]">
+                                <thead className="bg-slate-50/50 dark:bg-white/[0.02] text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] border-b dark:border-white/5">
                                     <tr>
                                         <th className="px-8 py-6">Código / Documento</th>
                                         <th className="px-8 py-6">Vigencia</th>
@@ -254,7 +295,7 @@ const Library: React.FC = () => {
                                         <th className="px-8 py-6 text-right">Acciones</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                <tbody className="divide-y divide-slate-100 dark:divide-white/5">
                                     {filteredDocs.length === 0 ? (
                                         <tr>
                                             <td colSpan={4} className="px-8 py-20 text-center">
@@ -276,7 +317,7 @@ const Library: React.FC = () => {
                                                             </div>
                                                             <div>
                                                                 <div className="flex items-center gap-2 mb-1">
-                                                                    <span className="text-xs font-black text-sky-600 uppercase">{doc.code}</span>
+                                                                    <span className="text-xs font-black text-[#5d5fef] uppercase">{doc.code}</span>
                                                                     <span className="text-slate-300 dark:text-slate-700">|</span>
                                                                     <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase">{doc.version}</span>
                                                                 </div>
@@ -302,28 +343,28 @@ const Library: React.FC = () => {
                                                         <div className="flex justify-end gap-2">
                                                             <button
                                                                 onClick={() => handleConsultAI(doc)}
-                                                                className="p-2.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl transition-all hover:scale-110 shadow-sm border border-indigo-100 dark:border-indigo-800 group/ai"
+                                                                className="p-3 bg-slate-100 dark:bg-white/5 text-indigo-500 rounded-2xl transition-all shadow-sm border dark:border-white/5 hover:text-[#5d5fef]"
                                                                 title="Consultar con IA"
                                                             >
                                                                 <RobotIcon />
                                                             </button>
                                                             <button
                                                                 onClick={() => setDocToView(doc)}
-                                                                className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl transition-all hover:scale-110 shadow-sm border border-slate-200 dark:border-slate-700"
+                                                                className="p-3 bg-slate-100 dark:bg-white/5 text-slate-400 rounded-2xl transition-all shadow-sm border dark:border-white/5 hover:text-sky-600"
                                                                 title="Ver Documento"
                                                             >
                                                                 <ViewIcon />
                                                             </button>
                                                             <button
                                                                 onClick={() => handleDownload(doc)}
-                                                                className="p-2.5 bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 rounded-xl transition-all hover:scale-110 shadow-sm border border-sky-100 dark:border-sky-800"
+                                                                className="p-3 bg-slate-100 dark:bg-white/5 text-sky-600 rounded-2xl transition-all shadow-sm border dark:border-white/5"
                                                                 title="Descargar PDF"
                                                             >
                                                                 <DownloadIcon />
                                                             </button>
                                                             <button
                                                                 onClick={() => handleDelete(doc.id)}
-                                                                className="p-2.5 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 rounded-xl transition-all hover:scale-110 shadow-sm border border-rose-100 dark:border-rose-800"
+                                                                className="p-3 bg-slate-100 dark:bg-white/5 text-rose-600 rounded-2xl transition-all shadow-sm border dark:border-white/5"
                                                                 title="Eliminar Documento"
                                                             >
                                                                 <DeleteIcon />

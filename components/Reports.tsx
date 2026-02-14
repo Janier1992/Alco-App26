@@ -52,7 +52,8 @@ const ReportGenerator: React.FC = () => {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const prompt = `Actúa como Director de Calidad de Alco Proyectos. Genera un reporte BI para el periodo: ${reportParams.dateRange}. 
             Tipo: ${reportParams.reportType}. Datos: NCs Activas: ${mockContext.ncs}, Calibraciones Vencidas: ${mockContext.calibVenc}, OEE: ${mockContext.oee}%. 
-            Estructura: 1. Resumen Gerencial, 2. Análisis de Riesgos en ${mockContext.topProcess}, 3. Tres Recomendaciones de Mejora Continua. Usa Markdown profesional.`;
+            Análisis específico para el área: ${reportParams.area === 'all' ? 'PLANTA GENERAL' : reportParams.area}.
+            Estructura: 1. Resumen Gerencial, 2. Análisis de Riesgos en Proceso ${mockContext.topProcess}, 3. Tres Recomendaciones de Mejora Continua (CAPA) enfocadas en Calidad ISO 9001. Usa Markdown profesional.`;
 
             const response = await ai.models.generateContent({
                 model: 'gemini-1.5-flash',
@@ -111,9 +112,10 @@ const ReportGenerator: React.FC = () => {
                     <label className={labelStyles}>Área de Interés</label>
                     <select value={reportParams.area} onChange={e => setReportParams(p => ({ ...p, area: e.target.value }))} className={inputStyles}>
                         <option value="all">Toda la Planta</option>
-                        <option value="Corte">Corte Aluminio</option>
-                        <option value="Pintura">Planta Pintura</option>
-                        <option value="Ensamble">Ensamble Fachada</option>
+                        <option value="CORTE DE">Corte de Perfilería</option>
+                        <option value="PINTURA">Planta Pintura</option>
+                        <option value="ENSAMBLE">Ensamble Fachada</option>
+                        <option value="FELPA / EMPAQUE">Felpa / Empaque</option>
                     </select>
                 </div>
                 <div>

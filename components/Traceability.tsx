@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import Breadcrumbs from './Breadcrumbs';
 import { QRIcon, SearchIcon, CheckCircleIcon, XCircleIcon } from '../constants';
 import type { ProductLot } from '../types';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../insforgeClient';
 import { useNotification } from './NotificationSystem';
 
 const Traceability: React.FC = () => {

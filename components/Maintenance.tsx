@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import type { Column, Task, Priority, Label, UserAvatar, Attachment } from '../types';
 import Breadcrumbs from './Breadcrumbs';
 import { AVAILABLE_LABELS, PROJECT_USERS, PaperclipIcon, PlusIcon, CameraIcon, DownloadIcon, WrenchIcon, ShieldCheckIcon, DropIcon, RobotIcon } from '../constants';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../insforgeClient';
 import { useNotification } from './NotificationSystem';
 import BulkUploadButton from './BulkUploadButton';
 

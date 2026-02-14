@@ -12,15 +12,14 @@ import {
 } from '../constants';
 import { useNotification } from './NotificationSystem';
 import ReactMarkdown from 'react-markdown';
+import { supabase } from '../insforgeClient';
 
 
 
 const NonConformities: React.FC = () => {
     const { addNotification } = useNotification();
-    const [ncs, setNcs] = useState<NonConformity[]>(() => {
-        const saved = localStorage.getItem('alco_ncs_v2');
-        return saved ? JSON.parse(saved) : [];
-    });
+    const [ncs, setNcs] = useState<NonConformity[]>([]);
+    const [loading, setLoading] = useState(true);
     const [selectedNC, setSelectedNC] = useState<NonConformity | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isActionModalOpen, setIsActionModalOpen] = useState(false);
@@ -31,99 +30,212 @@ const NonConformities: React.FC = () => {
     const [newActionResp, setNewActionResp] = useState('');
 
     useEffect(() => {
-        localStorage.setItem('alco_ncs_v2', JSON.stringify(ncs));
-    }, [ncs]);
+        fetchNcs();
+    }, []);
 
-    const handleCreateNC = (e: React.FormEvent<HTMLFormElement>) => {
+    const fetchNcs = async () => {
+        setLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('non_conformities')
+                .select(`
+                    *,
+                    nc_actions (*),
+                    nc_history (*)
+                `)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            const mappedNcs: NonConformity[] = data.map((nc: any) => ({
+                id: nc.serial_id || nc.id,
+                db_id: nc.id,
+                title: nc.title,
+                process: nc.process,
+                project: nc.project,
+                severity: nc.severity,
+                status: nc.status,
+                description: nc.description,
+                rca: nc.rca,
+                actions: nc.nc_actions.map((a: any) => ({
+                    id: a.id,
+                    description: a.description,
+                    responsible: a.responsible,
+                    dueDate: a.due_date,
+                    completed: a.completed
+                })),
+                createdAt: nc.created_at.split('T')[0],
+                closedAt: nc.closed_at,
+                history: nc.nc_history.map((h: any) => ({
+                    id: h.id,
+                    date: new Date(h.created_at).toLocaleString(),
+                    user: 'USUARIO', // Simplificado por ahora
+                    action: h.action,
+                    details: h.details
+                }))
+            }));
+
+            setNcs(mappedNcs);
+        } catch (error: any) {
+            addNotification({ type: 'error', title: 'ERROR DE CARGA', message: error.message });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCreateNC = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
-        const id = `NC-25-${(ncs.length + 1).toString().padStart(3, '0')}`;
-        const nc: NonConformity = {
-            id,
+        const serial_id = `NC-25-${(ncs.length + 1).toString().padStart(3, '0')}`;
+
+        const newNCData = {
+            serial_id,
             title: (formData.get('title') as string).toUpperCase(),
             process: formData.get('process') as string,
             project: formData.get('project') as string,
             severity: formData.get('severity') as NCSeverity,
             description: formData.get('description') as string,
             status: 'Abierta',
-            actions: [],
-            createdAt: new Date().toISOString().split('T')[0],
-            rca: { why1: '', why2: '', why3: '', why4: '', why5: '', rootCause: '' },
-            history: [
-                {
-                    id: Date.now().toString(),
-                    date: new Date().toLocaleString(),
-                    user: 'USUARIO ACTUAL', // En auth real sería el user logueado
-                    action: 'APERTURA',
-                    details: 'Creación inicial del hallazgo'
-                }
-            ]
+            rca: { why1: '', why2: '', why3: '', why4: '', why5: '', rootCause: '' }
         };
-        setNcs([nc, ...ncs]);
-        setIsCreateModalOpen(false);
-        addNotification({ type: 'success', title: 'HALLAZGO ABIERTO', message: `No Conformidad ${id} registrada para seguimiento.` });
+
+        try {
+            const { data, error } = await supabase
+                .from('non_conformities')
+                .insert([newNCData])
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            // Log history
+            await supabase.from('nc_history').insert([{
+                nc_id: data.id,
+                action: 'APERTURA',
+                details: `Hallazgo detectado en obra ${newNCData.project}.`
+            }]);
+
+            fetchNcs();
+            setIsCreateModalOpen(false);
+            addNotification({ type: 'success', title: 'HALLAZGO ABIERTO', message: `No Conformidad ${serial_id} registrada para seguimiento.` });
+        } catch (error: any) {
+            addNotification({ type: 'error', title: 'ERROR AL GUARDAR', message: error.message });
+        }
     };
 
-    const logHistory = (nc: NonConformity, action: string, details: string): NonConformity => {
-        const newEvent: any = {
-            id: Date.now().toString(),
-            date: new Date().toLocaleString(),
-            user: 'USUARIO ACTUAL',
+    const logHistory = async (ncId: string, action: string, details: string) => {
+        const { error } = await supabase.from('nc_history').insert([{
+            nc_id: ncId,
             action,
             details
-        };
-        return { ...nc, history: [...(nc.history || []), newEvent] };
+        }]);
+        if (error) console.error('Error logging history:', error);
     };
 
-    const handleAddCapaAction = () => {
+    const handleAddCapaAction = async () => {
         if (!selectedNC || !newActionDesc.trim()) return;
-        const newAction: CAPAAction = {
-            id: `CAPA-${Date.now()}`,
-            description: newActionDesc.toUpperCase(),
-            responsible: newActionResp.toUpperCase(),
-            dueDate: new Date().toISOString().split('T')[0],
-            completed: false
-        };
-        // Add action and log history
-        let updated = { ...selectedNC, actions: [...selectedNC.actions, newAction] };
-        updated = logHistory(updated, 'NUEVA ACCIÓN', `Se asignó acción a ${newAction.responsible}: ${newAction.description}`);
+        const db_id = (selectedNC as any).db_id || selectedNC.id;
 
-        handleUpdateNC(updated);
-        setNewActionDesc('');
-        setNewActionResp('');
+        try {
+            const { data, error } = await supabase.from('nc_actions').insert([{
+                nc_id: db_id,
+                description: newActionDesc.toUpperCase(),
+                responsible: newActionResp.toUpperCase(),
+                due_date: new Date().toISOString().split('T')[0]
+            }]).select().single();
+
+            if (error) throw error;
+
+            await logHistory(db_id, 'NUEVA ACCIÓN', `Se asignó acción a ${newActionResp.toUpperCase()}: ${newActionDesc.toUpperCase()}`);
+
+            fetchNcs();
+            setNewActionDesc('');
+            setNewActionResp('');
+            addNotification({ type: 'success', title: 'ACCIÓN ASIGNADA', message: 'Se ha registrado la nueva acción correctiva.' });
+        } catch (error: any) {
+            addNotification({ type: 'error', title: 'ERROR AL AÑADIR ACCIÓN', message: error.message });
+        }
     };
 
-    const handleToggleCapaAction = (actionId: string) => {
-        if (!selectedNC) return;
-        const updated = {
-            ...selectedNC,
-            actions: selectedNC.actions.map(a => a.id === actionId ? { ...a, completed: !a.completed } : a)
-        };
-        handleUpdateNC(updated);
+    const handleToggleCapaAction = async (actionId: string, currentState: boolean) => {
+        try {
+            const { error } = await supabase
+                .from('nc_actions')
+                .update({ completed: !currentState })
+                .eq('id', actionId);
+
+            if (error) throw error;
+            fetchNcs();
+        } catch (error: any) {
+            addNotification({ type: 'error', title: 'ERROR AL ACTUALIZAR ACCIÓN', message: error.message });
+        }
     };
 
-    const handleUpdateNC = (updated: NonConformity) => {
-        setNcs(prev => prev.map(nc => nc.id === updated.id ? updated : nc));
-        setSelectedNC(updated);
+    const handleUpdateNC = async (updated: any) => {
+        const db_id = updated.db_id || updated.id;
+        try {
+            const { error } = await supabase
+                .from('non_conformities')
+                .update({
+                    title: updated.title,
+                    process: updated.process,
+                    project: updated.project,
+                    severity: updated.severity,
+                    status: updated.status,
+                    description: updated.description,
+                    rca: updated.rca,
+                    closed_at: updated.status === 'Cerrada' || updated.status === 'Eficaz' ? new Date().toISOString() : null
+                })
+                .eq('id', db_id);
+
+            if (error) throw error;
+            fetchNcs();
+            setSelectedNC(updated);
+        } catch (error: any) {
+            addNotification({ type: 'error', title: 'ERROR AL ACTUALIZAR NC', message: error.message });
+        }
+    };
+
+    const handleDeleteNC = async (db_id: string, serial_id: string) => {
+        if (!confirm(`¿Está seguro de eliminar permanentemente el hallazgo ${serial_id}?`)) return;
+        try {
+            const { error } = await supabase
+                .from('non_conformities')
+                .delete()
+                .eq('id', db_id);
+
+            if (error) throw error;
+            fetchNcs();
+            addNotification({ type: 'success', title: 'HALLAZGO ELIMINADO', message: `El registro ${serial_id} fue borrado.` });
+        } catch (error: any) {
+            addNotification({ type: 'error', title: 'ERROR AL ELIMINAR', message: error.message });
+        }
     };
 
     const handleAISuggestion = async () => {
         // if (!selectedNC?.rca?.why1) return addNotification({ type: 'warning', title: 'FALTA CONTEXTO', message: 'Defina al menos el primer "¿Por qué?" para el análisis.' });
         setIsGeneratingAI(true);
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+            if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
+                throw new Error('API Key de Gemini no configurada.');
+            }
+            const ai = new GoogleGenAI({ apiKey });
             const prompt = `Analiza la No Conformidad: "${selectedNC.title}". Proceso: ${selectedNC.process}. Descripción del Problema: "${selectedNC.description}". Determina la causa raíz técnica final y sugiere un plan de acción correctivo de 3 pasos (CAPA). Formato: Markdown técnico Alco Proyectos.`;
-            const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
-            handleUpdateNC({ ...selectedNC, rca: { ...selectedNC.rca!, aiSuggestedRootCause: response.text } });
+            const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            handleUpdateNC({ ...selectedNC, rca: { ...selectedNC.rca!, aiSuggestedRootCause: response.text() } });
             addNotification({ type: 'success', title: 'DICTAMEN IA LISTO', message: 'Análisis RCA incorporado al expediente.' });
-        } catch (e) {
-            addNotification({ type: 'error', title: 'ERROR IA', message: 'Fallo en la conexión con el motor RCA.' });
+        } catch (e: any) {
+            console.error('AI Error:', e);
+            addNotification({ type: 'error', title: 'ERROR IA', message: e.message || 'Fallo en la conexión con el motor RCA.' });
         } finally {
             setIsGeneratingAI(false);
         }
     };
 
-    const inputStyles = "w-full p-4 bg-slate-50 dark:bg-[#1a1a24] border border-slate-200 dark:border-white/5 rounded-lg text-xs font-bold text-slate-800 dark:text-white focus:ring-2 focus:ring-rose-500 outline-none uppercase transition-all placeholder:text-slate-400";
+    const inputStyles = "w-full p-4 bg-slate-50 dark:bg-[#1a1a24] border border-slate-200 dark:border-white/5 rounded-2xl text-xs font-bold text-slate-800 dark:text-white focus:ring-2 focus:ring-[#5d5fef] outline-none uppercase transition-all placeholder:text-slate-400";
     const labelStyles = "text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 block ml-1";
 
     return (
@@ -137,32 +249,42 @@ const NonConformities: React.FC = () => {
                         <ExclamationTriangleIcon className="text-rose-600" /> Panel de No Conformidades y Análisis RCA Asistido por IA
                     </p>
                 </div>
-                <button onClick={() => setIsCreateModalOpen(true)} className="w-full md:w-auto px-10 py-5 bg-rose-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl shadow-rose-600/20 hover:scale-105 active:scale-95 transition-all">
-                    + Abrir Nuevo Hallazgo
+                <button onClick={() => setIsCreateModalOpen(true)} className="w-full md:w-auto px-10 py-5 bg-[#5d5fef] text-white rounded-[2rem] font-black text-xs uppercase tracking-widest shadow-xl shadow-[#5d5fef]/20 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-3">
+                    <PlusIcon /> Abrir Nuevo Hallazgo
                 </button>
             </div>
 
             {/* VISTA MÓVIL: TARJETAS */}
             <div className="md:hidden space-y-4">
-                {ncs.length === 0 ? (
-                    <div className="text-center p-8 bg-slate-50 dark:bg-alco-surface rounded-3xl border border-slate-200 dark:border-white/5">
+                {loading ? (
+                    <div className="flex flex-col items-center justify-center p-20 space-y-4">
+                        <RefreshIcon className="animate-spin text-[#5d5fef] size-10" />
+                        <p className="text-xs font-black uppercase tracking-widest text-slate-400 text-center">Sincronizando con el cerebro de InsForge...</p>
+                    </div>
+                ) : ncs.length === 0 ? (
+                    <div className="text-center p-12 premium-card">
                         <p className="text-xs font-black uppercase text-slate-400 tracking-widest">Sin hallazgos activos</p>
                     </div>
                 ) : ncs.map(nc => (
-                    <div key={nc.id} className="bg-white dark:bg-alco-surface p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm space-y-4">
+                    <div key={nc.id} className="premium-card p-6 space-y-4 shadow-sm">
                         <div className="flex justify-between items-start">
-                            <span className="text-[9px] text-rose-600 font-black uppercase tracking-widest bg-rose-50 dark:bg-rose-900/20 px-2 py-0.5 rounded">{nc.id}</span>
-                            <span className={`px-3 py-1 rounded-md text-[9px] font-black uppercase tracking-widest border ${nc.status === 'Cerrada' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-sky-50 text-sky-700 border-sky-100'}`}>{nc.status}</span>
+                            <span className="text-[10px] text-[#5d5fef] font-black uppercase tracking-widest bg-[#5d5fef]/10 px-3 py-1 rounded-full">{nc.id}</span>
+                            <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${nc.status === 'Cerrada' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-[#5d5fef]/10 text-[#5d5fef] border-[#5d5fef]/20'}`}>{nc.status}</span>
                         </div>
                         <div>
-                            <h3 className="font-black text-slate-800 dark:text-white uppercase text-sm leading-tight">{nc.title}</h3>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-wider">{nc.process}</p>
+                            <h3 className="font-black text-slate-800 dark:text-slate-100 uppercase text-sm leading-tight tracking-tight">{nc.title}</h3>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-1.5 tracking-wider flex items-center gap-1">
+                                <span className="w-1 h-1 rounded-full bg-[#5d5fef]"></span> {nc.process}
+                            </p>
                         </div>
                         <div className="flex justify-between items-center pt-4 border-t border-slate-100 dark:border-white/5">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase">Sev: {nc.severity}</span>
+                            <div className="flex flex-col">
+                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Severidad</span>
+                                <span className={`text-[10px] font-bold uppercase ${nc.severity === 'Crítica' ? 'text-rose-500' : nc.severity === 'Mayor' ? 'text-amber-500' : 'text-sky-500'}`}>{nc.severity}</span>
+                            </div>
                             <div className="flex gap-2">
-                                <button onClick={() => { setSelectedNC(nc); setIsActionModalOpen(true); }} className="p-2 bg-sky-50 text-sky-600 rounded-xl border border-sky-100"><BrainIcon /></button>
-                                <button onClick={() => { if (confirm('¿Eliminar registro?')) setNcs(prev => prev.filter(n => n.id !== nc.id)); }} className="p-2 bg-rose-50 text-rose-600 rounded-xl border border-rose-100"><TrashIcon /></button>
+                                <button onClick={() => { setSelectedNC(nc); setIsActionModalOpen(true); }} className="p-3 bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 rounded-2xl hover:text-[#5d5fef] transition-all"><BrainIcon /></button>
+                                <button onClick={() => handleDeleteNC((nc as any).db_id || nc.id, nc.id)} className="p-3 bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 rounded-2xl hover:text-rose-500 transition-all"><TrashIcon /></button>
                             </div>
                         </div>
                     </div>
@@ -170,8 +292,8 @@ const NonConformities: React.FC = () => {
             </div>
 
             {/* VISTA DESKTOP: TABLA */}
-            <div className="hidden md:block bg-white dark:bg-alco-surface rounded-3xl border border-slate-100 dark:border-white/5 overflow-hidden shadow-xl animate-fade-in">
-                <div className="overflow-x-auto custom-scrollbar">
+            <div className="hidden md:block premium-card overflow-hidden animate-fade-in shadow-xl">
+                <div className="responsive-table-container">
                     <table className="w-full text-left">
                         <thead className="bg-slate-50/50 dark:bg-white/[0.02] text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] border-b dark:border-white/5">
                             <tr>
@@ -182,7 +304,14 @@ const NonConformities: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y dark:divide-white/5">
-                            {ncs.length === 0 ? (
+                            {loading ? (
+                                <tr><td colSpan={4} className="px-10 py-24 text-center">
+                                    <div className="flex flex-col items-center gap-4">
+                                        <RefreshIcon className="animate-spin text-rose-600" />
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Consultando registros...</span>
+                                    </div>
+                                </td></tr>
+                            ) : ncs.length === 0 ? (
                                 <tr><td colSpan={4} className="px-10 py-24 text-center opacity-30 text-xs font-black uppercase tracking-[0.3em]">Sin hallazgos activos en el ciclo de mejora</td></tr>
                             ) : ncs.map(nc => (
                                 <tr key={nc.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-all group">
@@ -203,8 +332,8 @@ const NonConformities: React.FC = () => {
                                     </td>
                                     <td className="px-10 py-8 text-right">
                                         <div className="flex justify-end gap-3">
-                                            <button onClick={() => { setSelectedNC(nc); setIsActionModalOpen(true); }} className="p-3 bg-sky-50 text-sky-600 rounded-2xl hover:scale-110 transition-all shadow-sm border border-sky-100 dark:bg-sky-900/10 dark:border-sky-800" title="Analizar Hallazgo"><BrainIcon /></button>
-                                            <button onClick={() => { if (confirm('¿Eliminar registro?')) setNcs(prev => prev.filter(n => n.id !== nc.id)); }} className="p-3 bg-rose-50 text-rose-600 rounded-2xl hover:scale-110 transition-all shadow-sm border border-rose-100 dark:bg-rose-900/10 dark:border-rose-800"><TrashIcon /></button>
+                                            <button onClick={() => { setSelectedNC(nc); setIsActionModalOpen(true); }} className="p-3 bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 rounded-2xl hover:text-[#5d5fef] transition-all shadow-sm border border-slate-200 dark:border-white/5" title="Analizar Hallazgo"><BrainIcon /></button>
+                                            <button onClick={() => handleDeleteNC((nc as any).db_id || nc.id, nc.id)} className="p-3 bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 rounded-2xl hover:text-rose-500 transition-all shadow-sm border border-slate-200 dark:border-white/5"><TrashIcon /></button>
                                         </div>
                                     </td>
                                 </tr>
@@ -281,7 +410,7 @@ const NonConformities: React.FC = () => {
                                         ) : selectedNC.actions.map(action => (
                                             <div key={action.id} className={`p-5 rounded-2xl border flex items-center justify-between transition-all ${action.completed ? 'bg-emerald-50/50 border-emerald-200 opacity-60' : 'bg-white dark:bg-white/5 border-slate-100 dark:border-white/5'}`}>
                                                 <div className="flex gap-4 items-start">
-                                                    <button onClick={() => handleToggleCapaAction(action.id)} className={`size-6 mt-1 rounded-lg border-2 flex items-center justify-center transition-all ${action.completed ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300 dark:border-slate-700 hover:border-emerald-500'}`}>
+                                                    <button onClick={() => handleToggleCapaAction(action.id, action.completed)} className={`size-6 mt-1 rounded-lg border-2 flex items-center justify-center transition-all ${action.completed ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300 dark:border-slate-700 hover:border-emerald-500'}`}>
                                                         {action.completed && <i className="fas fa-check text-[10px]"></i>}
                                                     </button>
                                                     <div>

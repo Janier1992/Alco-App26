@@ -8,7 +8,7 @@ import {
     BellIcon, RobotIcon, FolderOpenIcon
 } from '../constants';
 import { useNotification } from './NotificationSystem';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../insforgeClient';
 import BulkUploadButton from './BulkUploadButton';
 
 // Componente de Popover Reutilizable

@@ -8,7 +8,7 @@ import {
 import type { QualityDocument } from '../types';
 import { useNotification } from './NotificationSystem';
 import ReactMarkdown from 'react-markdown';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../insforgeClient';
 import BulkUploadButton from './BulkUploadButton';
 
 const QualityClaims: React.FC = () => {

@@ -21,9 +21,9 @@ const Indicators: React.FC = () => {
     const gridColor = theme === 'dark' ? '#1e293b' : '#f1f5f9';
 
     const [targets, setTargets] = useState<KpiTarget[]>([
-        { id: '1', kpi: 'Eficiencia de Corte', target: '98%', status: 'Conforme' },
-        { id: '2', kpi: 'Rechazos de Pintura', target: '< 2%', status: 'Alerta' },
-        { id: '3', kpi: 'Aprovechamiento Cristal', target: '92%', status: 'Crítico' }
+        { id: '1', kpi: 'Eficiencia de CORTE DE', target: '98%', status: 'Conforme' },
+        { id: '2', kpi: 'RECHAZOS POR PINTURA', target: '< 2%', status: 'Alerta' },
+        { id: '3', kpi: 'Aprovechamiento VIDRIO CRUDO', target: '92%', status: 'Crítico' }
     ]);
 
     const handleDeleteTarget = (id: string) => {
@@ -54,7 +54,7 @@ const Indicators: React.FC = () => {
     return (
         <div className="animate-fade-in space-y-8 pb-20">
             <Breadcrumbs crumbs={[{ label: 'DASHBOARDS', path: '/dashboard' }, { label: 'KPIs ESTRATÉGICOS' }]} />
-            
+
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div>
                     <h1 className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white uppercase tracking-tighter leading-none">Dashboards <span className="text-sky-600">Estratégicos</span></h1>
@@ -67,18 +67,18 @@ const Indicators: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                 {[
+                {[
                     { l: 'OEE Global', v: '94.2%', t: '▲ 2.1%', c: 'text-emerald-500', bc: 'border-emerald-500' },
                     { l: 'Tasa de Defectos', v: '1.4%', t: '▼ 0.3%', c: 'text-rose-500', bc: 'border-rose-500' },
                     { l: 'Eficiencia Cristal', v: '88.5%', t: '▲ 4.2%', c: 'text-sky-500', bc: 'border-sky-500' },
                     { l: 'Cierre de CAPAs', v: '100%', t: 'ESTABLE', c: 'text-indigo-500', bc: 'border-indigo-500' }
-                 ].map((stat, i) => (
+                ].map((stat, i) => (
                     <div key={i} className={`bg-white dark:bg-alco-surface p-8 rounded-[2.5rem] shadow-sm border-l-8 ${stat.bc} transition-all hover:shadow-xl hover:-translate-y-1`}>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{stat.l}</p>
                         <p className="text-4xl font-black text-slate-800 dark:text-white tracking-tighter">{stat.v}</p>
                         <p className={`text-[10px] font-black ${stat.c} uppercase mt-2`}>{stat.t} vs mes anterior</p>
                     </div>
-                 ))}
+                ))}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -90,7 +90,7 @@ const Indicators: React.FC = () => {
                     <div className="h-[350px]">
                         <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={MOCK_CHART_DATA.qualityTrend}>
-                                <defs><linearGradient id="colorInd" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.3}/><stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/></linearGradient></defs>
+                                <defs><linearGradient id="colorInd" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.3} /><stop offset="95%" stopColor="#0ea5e9" stopOpacity={0} /></linearGradient></defs>
                                 <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
                                 <XAxis dataKey="name" stroke={axisColor} fontSize={10} fontWeight="bold" axisLine={false} tickLine={false} />
                                 <YAxis domain={[90, 100]} stroke={axisColor} fontSize={10} fontWeight="bold" axisLine={false} tickLine={false} />

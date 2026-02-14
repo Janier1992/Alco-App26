@@ -116,6 +116,12 @@ export const NAV_ITEMS: NavItem[] = [
         label: 'SOPORTE OBRAS',
         path: '/installations',
         icon: ConstructionIcon,
+    },
+    {
+        id: 'settings',
+        label: 'CONFIGURACIÓN',
+        path: '/settings',
+        icon: CogIcon,
     }
 ];
 
@@ -213,21 +219,21 @@ export const MOCK_CHART_DATA = {
         { name: 'Dom', value: 97 }
     ],
     defectsByType: [
-        { name: 'Rayones', value: 24, fill: '#ef4444' }, // Red
-        { name: 'Medidas', value: 18, fill: '#f97316' }, // Orange
-        { name: 'Pintura', value: 12, fill: '#eab308' }, // Yellow
-        { name: 'Ensamble', value: 8, fill: '#3b82f6' },  // Blue
-        { name: 'Empaque', value: 4, fill: '#10b981' }   // Emerald
+        { name: 'RASGUÑO', value: 24, fill: '#ef4444' },
+        { name: 'MEDIDAS', value: 18, fill: '#f97316' },
+        { name: 'PINTURA', value: 12, fill: '#eab308' },
+        { name: 'ENSAMBLE', value: 8, fill: '#3b82f6' },
+        { name: 'SUCIEDAD', value: 4, fill: '#10b981' }
     ],
     inspectionsByArea: [
-        { name: 'Corte', value: 45 },
-        { name: 'Ensamble', value: 38 },
-        { name: 'Pintura', value: 52 },
-        { name: 'Empaque', value: 29 },
-        { name: 'Calidad', value: 60 }
+        { name: 'CORTE DE', value: 45 },
+        { name: 'ENSAMBLE', value: 38 },
+        { name: 'PINTURA', value: 52 },
+        { name: 'FELPA / EMPAQUE', value: 29 },
+        { name: 'CALIDAD', value: 60 }
     ],
     defects: [
-        { name: 'Corte', value: 40 }, { name: 'Pintura', value: 30 }, { name: 'Ensamble', value: 20 }, { name: 'Venta', value: 10 }
+        { name: 'CORTE', value: 40 }, { name: 'PINTURA', value: 30 }, { name: 'ENSAMBLE', value: 20 }, { name: 'VENTA', value: 10 }
     ]
 };
 

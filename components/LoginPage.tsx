@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../insforgeClient';
 import type { User } from '../types';
 
 interface LoginPageProps {

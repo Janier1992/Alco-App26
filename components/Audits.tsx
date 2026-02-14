@@ -9,7 +9,7 @@ import {
 } from '../constants';
 import ReactMarkdown from 'react-markdown';
 import { useNotification } from './NotificationSystem';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../insforgeClient';
 import BulkUploadButton from './BulkUploadButton';
 
 interface AuditFinding {

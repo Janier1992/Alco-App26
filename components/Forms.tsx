@@ -13,7 +13,7 @@ import {
     SaveIcon, GlobeIcon, XCircleIcon
 } from '../constants';
 import { useNotification } from './NotificationSystem';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../insforgeClient';
 import BulkUploadButton from './BulkUploadButton';
 
 const SearchableSelect: React.FC<{
@@ -87,20 +87,43 @@ const Forms: React.FC = () => {
     const [isLinksViewOpen, setIsLinksViewOpen] = useState(false);
     const [isAddLinkModalOpen, setIsAddLinkModalOpen] = useState(false);
     const [embeddedForm, setEmbeddedForm] = useState<ExternalForm | null>(null);
-    const [externalLinks, setExternalLinks] = useState<ExternalForm[]>(() => {
-        const saved = localStorage.getItem('alco_external_links');
-        return saved ? JSON.parse(saved) : [
-            { id: '1', title: 'Seguimiento Ventas Alco', url: 'https://forms.office.com/Pages/ResponsePage.aspx?id=DQSIkWdsW0yxEjajBLZtrQAAAAAAAAAAAANAAV-tB0VUMzdHVEo5SzhLTVpZSDZJRklFUVZCVjBJVy4u', description: 'Registro de requerimientos comerciales', color: 'blue' }
-        ];
-    });
+    const [externalLinks, setExternalLinks] = useState<ExternalForm[]>([]);
+
+    useEffect(() => {
+        fetchExternalLinks();
+    }, []);
+
+    const fetchExternalLinks = async () => {
+        try {
+            const { data, error } = await supabase.from('external_links').select('*').order('created_at', { ascending: false });
+            if (error) throw error;
+            setExternalLinks(data || []);
+        } catch (error) {
+            console.error('Error fetching links:', error);
+        }
+    };
 
     const [formData, setFormData] = useState<Omit<InspectionData, 'id'>>(INITIAL_FORM_DATA);
     const [submissions, setSubmissions] = useState<InspectionData[]>([]);
     const [isCameraOpen, setCameraOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [columnFilters, setColumnFilters] = useState({
+        fecha: '', op: '', areaProceso: '', planoOpc: '', disenoReferencia: '',
+        cantTotal: '', cantRetenida: '', estado: '', defecto: '', reviso: '',
+        responsable: '', accionCorrectiva: '', observacion: ''
+    });
 
-    useEffect(() => { localStorage.setItem('alco_external_links', JSON.stringify(externalLinks)); }, [externalLinks]);
+    const filteredSubmissions = useMemo(() => {
+        return submissions.filter(sub => {
+            return Object.entries(columnFilters).every(([key, value]) => {
+                if (!value) return true;
+                const fieldVal = String((sub as any)[key] || '').toLowerCase();
+                return fieldVal.includes(value.toLowerCase());
+            });
+        });
+    }, [submissions, columnFilters]);
 
     useEffect(() => {
         fetchInspections();
@@ -145,20 +168,38 @@ const Forms: React.FC = () => {
     };
 
     // Modals & Links
-    const handleAddExternalLink = (e: React.FormEvent) => {
+    const handleAddExternalLink = async (e: React.FormEvent) => {
         e.preventDefault();
         const form = e.target as HTMLFormElement;
-        const data = new FormData(form);
-        const newLink: ExternalForm = {
-            id: Date.now().toString(),
-            title: data.get('title') as string,
-            url: data.get('url') as string,
-            description: data.get('description') as string,
-            color: 'blue'
-        };
-        setExternalLinks([...externalLinks, newLink]);
-        setIsAddLinkModalOpen(false);
-        addNotification({ type: 'success', title: 'ENLACE AGREGADO', message: 'Formulario centralizado con éxito.' });
+        const formData = new FormData(form);
+
+        try {
+            const { error } = await supabase.from('external_links').insert([{
+                title: (formData.get('title') as string).toUpperCase(),
+                url: formData.get('url') as string,
+                description: formData.get('description') as string,
+                color: formData.get('color') as string
+            }]);
+
+            if (error) throw error;
+
+            fetchExternalLinks();
+            setIsAddLinkModalOpen(false);
+            addNotification({ type: 'success', title: 'ENLACE AGREGADO', message: 'Configuración sincronizada en la nube.' });
+        } catch (error: any) {
+            addNotification({ type: 'error', title: 'ERROR', message: error.message });
+        }
+    };
+
+    const handleDeleteLink = async (id: string, title: string) => {
+        if (!confirm(`¿Eliminar enlace "${title}"?`)) return;
+        try {
+            const { error } = await supabase.from('external_links').delete().eq('id', id);
+            if (error) throw error;
+            fetchExternalLinks();
+        } catch (error: any) {
+            addNotification({ type: 'error', title: 'ERROR', message: error.message });
+        }
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -189,23 +230,74 @@ const Forms: React.FC = () => {
         });
     };
 
-    const simulateVision = () => {
-        if (!formData.photo) {
-            setFormData(prev => ({ ...prev, photo: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }));
-            addNotification({ type: 'info', title: 'MODO DEMO', message: 'Se ha cargado una imagen de prueba automáticamente.' });
-        }
-        addNotification({ type: 'info', title: 'ANALIZANDO...', message: 'Ejecutando modelo YOLO v8 (Conteo y Defectos)...' });
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-        setTimeout(() => {
-            const detectedCount = Math.floor(Math.random() * 50) + 1;
-            const defects = ['NINGUNO', 'RAYAS', 'GOLPES', 'DECOLORACION', 'REVENTON'];
-            const detectedDefect = Math.random() > 0.5 ? defects[Math.floor(Math.random() * defects.length)] : 'NINGUNO';
+    // Initialize Gemini AI
+    const genAI = new GoogleGenAI(import.meta.env.VITE_GOOGLE_GENAI_KEY || '');
+
+    const analyzeImage = async () => {
+        if (!formData.photo) {
+            // Load a demo image if none exists (for testing purposes)
+            // Using a placeholder base64 acting as an "industrial part"
+            const demoImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAABiSURBVHgB7c6xCQAgDAVRR9A6g4u4/2QW4QPct8p1CR8zM3O3750A8iJLiSwlspTIUiJLiSwlspTIUiJLiSwlspTIUiJLiSwlspTIUiJLiSwlspTIUiJLiSwlspTIUiJLiyx9I8sF/w49i0kAAAAASUVORK5CYII=';
+            setFormData(prev => ({ ...prev, photo: demoImage }));
+            addNotification({ type: 'info', title: 'MODO DEMO', message: 'Se ha cargado una imagen de prueba. Procesando...' });
+
+            // Allow state to update before proceeding
+            setTimeout(() => executeAnalysis(demoImage), 100);
+            return;
+        }
+        executeAnalysis(formData.photo);
+    };
+
+    const executeAnalysis = async (base64Image: string) => {
+        if (!import.meta.env.VITE_GOOGLE_GENAI_KEY) {
+            addNotification({ type: 'error', title: 'CONFIGURACIÓN FALTANTE', message: 'Falta la API Key de Google GenAI en .env.local' });
+            return;
+        }
+
+        setIsAnalyzing(true);
+        addNotification({ type: 'info', title: 'ANALIZANDO...', message: 'Gemini 1.5 Flash está inspeccionando la imagen...' });
+
+        try {
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+            // Clean base64 string
+            const imageParts = [
+                {
+                    inlineData: {
+                        data: base64Image.split(',')[1],
+                        mimeType: "image/png",
+                    },
+                },
+            ];
+
+            const prompt = `
+                Analiza esta imagen de una parte industrial / perfil de aluminio. Actúa como un experto inspector de calidad.
+                Responde EXCLUSIVAMENTE con un objeto JSON (sin markdown) con la siguiente estructura:
+                {
+                    "cantTotal": number (conteo de unidades visibles, estimado si es difícil),
+                    "defecto": string (uno de: "NINGUNO", "RAYAS", "GOLPES", "DECOLORACION", "REVENTON"),
+                    "observacion": string (descripción técnica breve y profesional del hallazgo)
+                }
+                Si no se detecta defecto, el defecto es "NINGUNO".
+            `;
+
+            const result = await model.generateContent([prompt, ...imageParts]);
+            const response = result.response;
+            const text = response.text();
+
+            // Parse JSON with cleanup (remove Markdown ```json ... ``` if present)
+            const cleanJson = text.replace(/```json/g, '').replace(/```/g, '').trim();
+            const analysis = JSON.parse(cleanJson);
+
+            // Determine status based on defect
             let status = 'Aprobado';
             let alertLevel: 'None' | 'Warning' | 'Critical' = 'None';
             let isLocked = false;
 
-            if (detectedDefect !== 'NINGUNO') {
-                if (['REVENTON', 'DECOLORACION'].includes(detectedDefect)) {
+            if (analysis.defecto !== 'NINGUNO') {
+                if (['REVENTON', 'DECOLORACION'].includes(analysis.defecto)) {
                     status = 'Rechazado';
                     alertLevel = 'Critical';
                     isLocked = true;
@@ -217,20 +309,28 @@ const Forms: React.FC = () => {
 
             setFormData(prev => ({
                 ...prev,
-                cantTotal: detectedCount,
-                defecto: detectedDefect,
+                cantTotal: analysis.cantTotal || 0,
+                defecto: analysis.defecto || 'NINGUNO',
                 estado: status,
                 alertLevel: alertLevel,
                 isLocked: isLocked,
-                observacion: prev.observacion === 'NA' ? `Análisis IA: Se detectaron ${detectedCount} unidades. Defecto identificado: ${detectedDefect}.` : `${prev.observacion} [IA: ${detectedCount} u, ${detectedDefect}]`
+                observacion: prev.observacion === 'NA'
+                    ? `IA: ${analysis.observacion}`
+                    : `${prev.observacion} \n[IA]: ${analysis.observacion}`
             }));
 
             if (alertLevel === 'Critical') {
-                addNotification({ type: 'error', title: 'BLOQUEO DE CALIDAD', message: `Defecto CRÍTICO detectado (${detectedDefect}). Se requiere aprobación de supervisor.` });
+                addNotification({ type: 'error', title: 'BLOQUEO DE CALIDAD', message: `Defecto CRÍTICO detectado (${analysis.defecto}).` });
             } else {
-                addNotification({ type: 'success', title: 'ANÁLISIS COMPLETADO', message: `Conteo: ${detectedCount} | Defecto: ${detectedDefect}` });
+                addNotification({ type: 'success', title: 'ANÁLISIS COMPLETADO', message: `Conteo: ${analysis.cantTotal} | Defecto: ${analysis.defecto}` });
             }
-        }, 2500);
+
+        } catch (error: any) {
+            console.error("AI Error:", error);
+            addNotification({ type: 'error', title: 'FALLO DE ANÁLISIS', message: 'No se pudo procesar la imagen con IA.' });
+        } finally {
+            setIsAnalyzing(false);
+        }
     };
 
     const handleVoiceData = (jsonString: string) => {
@@ -257,38 +357,95 @@ const Forms: React.FC = () => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    const handleDelete = async (id: string) => {
-        if (confirm('¿Eliminar este registro de inspección permanentemente?')) {
+    const handleDelete = async (id: string | string[]) => {
+        const isBulk = Array.isArray(id);
+        const idsToDelete = isBulk ? id : [id];
+        const message = isBulk
+            ? `¿Confirmas la eliminación permanente de ${idsToDelete.length} registros seleccionados?`
+            : '¿Eliminar este registro de inspección permanentemente?';
+
+        if (confirm(message)) {
+            setLoading(true);
             try {
-                const { error } = await supabase.from('field_inspections').delete().eq('id', id);
-                if (error) throw error;
-                setSubmissions(prev => prev.filter(s => s.id !== id));
-                addNotification({ type: 'error', title: 'REGISTRO ELIMINADO', message: 'La inspección ha sido eliminada del historial.' });
+                // Chunk the deletion to avoid URL length limits (Supabase/PostgREST)
+                const chunkSize = 100;
+                for (let i = 0; i < idsToDelete.length; i += chunkSize) {
+                    const chunk = idsToDelete.slice(i, i + chunkSize);
+                    const { error } = await supabase.from('field_inspections').delete().in('id', chunk);
+                    if (error) throw error;
+
+                    // Update local state incrementally to provide feedback
+                    setSubmissions(prev => prev.filter(s => !chunk.includes(s.id)));
+                }
+
+                if (isBulk) setSelectedIds(new Set());
+                addNotification({
+                    type: 'error',
+                    title: isBulk ? 'REGISTROS ELIMINADOS' : 'REGISTRO ELIMINADO',
+                    message: isBulk ? `${idsToDelete.length} registros han sido removidos.` : 'La inspección ha sido eliminada del historial.'
+                });
             } catch (error) {
                 console.error(error);
-                addNotification({ type: 'error', title: 'Error', message: 'No se pudo eliminar el registro.' });
+                addNotification({ type: 'error', title: 'Error', message: 'No se pudo completar la eliminación acelerada. Algunos registros podrían persistir.' });
+            } finally {
+                setLoading(false);
             }
         }
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.size === filteredSubmissions.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(filteredSubmissions.map(s => s.id)));
+        }
+    };
+
+    const toggleSelectRow = (id: string) => {
+        const newSelected = new Set(selectedIds);
+        if (newSelected.has(id)) {
+            newSelected.delete(id);
+        } else {
+            newSelected.add(id);
+        }
+        setSelectedIds(newSelected);
+    };
+
+    const triggerNC = async (inspection: any) => {
+        const serial_id = `NC-AUTO-${Date.now().toString().slice(-4)}`;
+        const newNCData = {
+            serial_id,
+            title: `NC AUTOMÁTICA: RECHAZO EN ${inspection.area_proceso}`.toUpperCase(),
+            process: inspection.area_proceso,
+            project: inspection.op,
+            severity: 'Mayor', // Default for rejections
+            description: `Hallazgo generado automáticamente por inspección rechazada. Defecto: ${inspection.defecto}. Observación: ${inspection.observacion}`,
+            status: 'Abierta',
+            rca: { why1: '', why2: '', why3: '', why4: '', why5: '', rootCause: '' }
+        };
+
+        const { error } = await supabase.from('non_conformities').insert([newNCData]);
+        if (error) console.error('Error triggering NC:', error);
     };
 
     const handleSubmitGeneral = async (e: React.FormEvent) => {
         e.preventDefault();
 
         const getDBPayload = (data: InspectionData | Omit<InspectionData, 'id'>) => ({
-            fecha: data.fecha,
-            area_proceso: data.areaProceso,
-            op: data.op,
-            plano_opc: data.planoOpc,
-            diseno_referencia: data.disenoReferencia,
-            cant_total: data.cantTotal,
-            cant_retenida: data.cantRetenida,
-            estado: data.estado,
-            defecto: data.defecto,
-            reviso: data.reviso,
-            responsable: data.responsable,
-            accion_correctiva: data.accionCorrectiva,
-            observacion_sugerida: data.observacionSugerida,
-            observacion: data.observacion,
+            fecha: data.fecha || new Date().toISOString().split('T')[0],
+            area_proceso: (data.areaProceso || '').toUpperCase(),
+            op: (data.op || '').toUpperCase(),
+            plano_opc: (data.planoOpc || '').toString().toUpperCase(),
+            diseno_referencia: (data.disenoReferencia || '').toUpperCase(),
+            cant_total: parseInt(data.cantTotal.toString()) || 0,
+            cant_retenida: parseInt(data.cantRetenida.toString()) || 0,
+            estado: data.estado || 'Aprobado',
+            defecto: (data.defecto || 'NINGUNO').toUpperCase(),
+            reviso: data.reviso || '',
+            responsable: (data.responsable || '').toUpperCase(),
+            accion_correctiva: (data.accionCorrectiva || '').toUpperCase(),
+            observacion_sugerida: (data.observacionSugerida || '').toUpperCase(),
+            observacion: data.observacion || 'NA',
             photo_url: data.photo
         });
 
@@ -317,6 +474,12 @@ const Forms: React.FC = () => {
 
                 if (error) throw error;
                 addNotification({ type: 'success', title: 'REGISTROS GUARDADOS', message: `${inserts.length} inspecciones generadas para OP #${formData.op}.` });
+
+                // Automatic NC Trigger
+                if (formData.estado === 'Rechazado') {
+                    await triggerNC(inserts[0]); // Trigger for the first one if multiple
+                    addNotification({ type: 'warning', title: 'NC GENERADA', message: 'Se ha abierto un borrador de No Conformidad automáticamente.' });
+                }
             }
 
             fetchInspections();
@@ -382,6 +545,40 @@ const Forms: React.FC = () => {
         );
     }
 
+    // Helper functions for Bulk Upload
+    const fuzzyFind = (row: any, candidates: string[]) => {
+        const normalize = (s: string) => s.toLowerCase().replace(/[áàäâ]/g, 'a').replace(/[éèëê]/g, 'e').replace(/[íìïî]/g, 'i').replace(/[óòöô]/g, 'o').replace(/[úùüû]/g, 'u').trim();
+        const rowKeys = Object.keys(row);
+
+        // 1. Exact match (normalized)
+        for (const candidate of candidates) {
+            const match = rowKeys.find(key => normalize(key) === normalize(candidate));
+            if (match) return row[match];
+        }
+
+        // 2. Partial match (if strict fails)
+        for (const candidate of candidates) {
+            const match = rowKeys.find(key => normalize(key).includes(normalize(candidate)));
+            if (match) return row[match];
+        }
+        return undefined;
+    };
+
+    const parseExcelDate = (value: any): string => {
+        if (!value) return new Date().toISOString().split('T')[0];
+        // Excel serial date (number of days since 1900-01-01)
+        if (typeof value === 'number') {
+            const date = new Date(Math.round((value - 25569) * 86400 * 1000));
+            // Adjust for timezone offset to prevent date shifting
+            date.setMinutes(date.getMinutes() + date.getTimezoneOffset());
+            return date.toISOString().split('T')[0];
+        }
+        // String date
+        const date = new Date(value);
+        if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
+        return new Date().toISOString().split('T')[0];
+    };
+
     return (
         <div className="space-y-6 animate-fade-in pb-20">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -391,6 +588,21 @@ const Forms: React.FC = () => {
                         tableName="field_inspections"
                         onUploadComplete={fetchInspections}
                         label="Carga Masiva (Excel)"
+                        mapping={(row: any) => ({
+                            fecha: parseExcelDate(fuzzyFind(row, ['FECHA', 'DATE', 'DIA', 'CREADO', 'TIMESTAMP'])),
+                            area_proceso: (fuzzyFind(row, ['AREA DE PROCESO', 'AREA', 'PROCESO', 'SECTION', 'DEPARTAMENTO']) || '').toUpperCase(),
+                            op: (fuzzyFind(row, ['OP', 'ORDEN', 'ORDEN DE PRODUCCION', 'PRODUCTION ORDER', 'O.P']) || '').toString().toUpperCase(),
+                            plano_opc: (fuzzyFind(row, ['PLANO (OPC)', 'PLANO', 'ITEM', 'DRAWING', 'REFERENCIA PLANO']) || '').toString().toUpperCase(),
+                            diseno_referencia: (fuzzyFind(row, ['DISEÑO/REFERENCIA', 'DISENO', 'REFERENCIA', 'SISTEMA', 'REF', 'DESIGN']) || '').toUpperCase(),
+                            cant_total: parseInt(fuzzyFind(row, ['CANT TOTAL', 'CANTIDAD', 'TOTAL', 'QTY', 'CANT']) || '0') || 0,
+                            cant_retenida: parseInt(fuzzyFind(row, ['CANT RETENIDA', 'RETENIDA', 'RECHAZADA', 'NG']) || '0') || 0,
+                            estado: fuzzyFind(row, ['ESTADO', 'STATUS', 'SITUACION', 'CONDICION']) || 'Aprobado',
+                            defecto: (fuzzyFind(row, ['DEFECTO', 'FALLA', 'MOTIVO', 'ERROR', 'DEFECT']) || 'NINGUNO').toUpperCase(),
+                            reviso: fuzzyFind(row, ['REVISÓ', 'REVISO', 'INSPECTOR', 'AUDITOR', 'ENCARGADO']) || '',
+                            responsable: (fuzzyFind(row, ['RESPONSABLE', 'OPERARIO', 'OPERADOR', 'WORKER']) || '').toUpperCase(),
+                            accion_correctiva: (fuzzyFind(row, ['ACCION CORRECTIVA', 'ACCION', 'CORRECCION', 'CAPA']) || '').toUpperCase(),
+                            observacion: fuzzyFind(row, ['OBSERVACION', 'HALLAZGO', 'OBSERVACIONES', 'NOTES', 'COMENTARIOS']) || 'NA'
+                        })}
                     />
                     <button onClick={() => setIsLinksViewOpen(!isLinksViewOpen)} className={`flex items-center gap-2 px-4 py-2.5 ${isLinksViewOpen ? 'bg-slate-300 dark:bg-slate-600' : 'bg-[#4b5563] hover:bg-[#374151]'} text-white rounded-lg font-bold text-xs shadow-md transition-all`}><LinkIcon /> Enlaces Externos</button>
                     <button onClick={() => setActiveFormType('general')} className="flex items-center gap-2 px-4 py-2.5 bg-[#005c97] hover:bg-[#004a7a] text-white rounded-lg font-bold text-xs shadow-md transition-all"><PlusIcon /> Nueva Inspección</button>
@@ -421,7 +633,7 @@ const Forms: React.FC = () => {
                                             Abrir en Suite <ChevronRightIcon className="scale-75" />
                                         </button>
                                     </div>
-                                    <button onClick={() => setExternalLinks(externalLinks.filter(l => l.id !== link.id))} className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 p-2 text-rose-500 transition-opacity"><TrashIcon className="scale-75" /></button>
+                                    <button onClick={() => handleDeleteLink(link.id, link.title)} className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 p-2 text-rose-500 transition-opacity"><TrashIcon className="scale-75" /></button>
                                 </div>
                             </div>
                         ))}
@@ -462,6 +674,16 @@ const Forms: React.FC = () => {
                                 <div className="p-5 bg-sky-50 dark:bg-sky-900/10 rounded-2xl border border-sky-100 dark:border-sky-900/30">
                                     <p className="text-[9px] font-black text-sky-600 uppercase tracking-widest flex items-center gap-2 mb-2"><SparklesIcon className="scale-75" /> Recomendación IA</p>
                                     <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed italic">"Capture los bordes de la perfilería a 45° para detectar rebabas de corte automáticamente."</p>
+
+                                    <button
+                                        type="button"
+                                        onClick={analyzeImage}
+                                        disabled={isAnalyzing}
+                                        className={`w-full mt-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${isAnalyzing ? 'bg-slate-200 text-slate-400' : 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-indigo-500/30 hover:scale-[1.02]'}`}
+                                    >
+                                        {isAnalyzing ? <RefreshIcon className="animate-spin" /> : <SparklesIcon />}
+                                        {isAnalyzing ? 'Procesando...' : 'Analizar con IA'}
+                                    </button>
                                 </div>
                             </div>
 
@@ -527,21 +749,111 @@ const Forms: React.FC = () => {
             )}
 
             {activeFormType === 'none' && (
-                <div className="bg-white dark:bg-alco-surface rounded-3xl shadow-sm border border-slate-100 dark:border-white/5 overflow-hidden transition-all duration-500 animate-fade-in">
-                    <div className="p-8 bg-slate-50 dark:bg-white/5 border-b dark:border-white/5 flex justify-between items-center">
+                <div className="premium-card overflow-hidden animate-fade-in">
+                    <div className="p-8 bg-slate-50 dark:bg-white/5 border-b dark:border-white/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                         <h3 className="text-xl font-black uppercase tracking-tighter">Historial Maestro de Inspecciones</h3>
-                        <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 rounded-xl shadow-inner border dark:border-white/5">
-                            <SearchIcon />
-                            <input className="bg-transparent border-none outline-none text-xs font-bold uppercase w-48" placeholder="BUSCAR OP..." />
+                        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                            {/* Mobile-only Select All Toggle */}
+                            <div className="md:hidden flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-white/5 rounded-lg border dark:border-white/10">
+                                <input
+                                    type="checkbox"
+                                    checked={filteredSubmissions.length > 0 && selectedIds.size === filteredSubmissions.length}
+                                    onChange={toggleSelectAll}
+                                    className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                                />
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Todo</span>
+                            </div>
+
+                            {selectedIds.size > 0 && (
+                                <button
+                                    onClick={() => handleDelete(Array.from(selectedIds))}
+                                    disabled={loading}
+                                    className={`px-4 py-2 ${loading ? 'bg-slate-400' : 'bg-rose-600 shadow-lg shadow-rose-900/20'} text-white rounded-xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-2`}
+                                >
+                                    {loading ? <RefreshIcon className="animate-spin scale-75" /> : <TrashIcon className="scale-75" />}
+                                    {loading ? 'Borrando...' : `Eliminar (${selectedIds.size})`}
+                                </button>
+                            )}
+                            <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 rounded-xl shadow-inner border dark:border-white/5 flex-grow md:flex-initial">
+                                <SearchIcon />
+                                <input className="bg-transparent border-none outline-none text-xs font-bold uppercase w-full md:w-48" placeholder="BUSCAR OP..." />
+                            </div>
                         </div>
                     </div>
-                    <div className="overflow-x-auto custom-scrollbar">
-                        <table className="w-full text-left min-w-[1800px]">
+
+                    {/* VISTA MÓVIL: TARJETAS */}
+                    <div className="md:hidden p-4 space-y-4">
+                        {loading ? (
+                            <div className="flex flex-col items-center justify-center py-20 gap-4">
+                                <RefreshIcon className="animate-spin text-[#5d5fef]" />
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Consultando registros...</p>
+                            </div>
+                        ) : submissions.length === 0 ? (
+                            <div className="text-center py-12 opacity-30 text-xs font-black uppercase tracking-[0.3em]">Base de datos vacía</div>
+                        ) : submissions.map(sub => (
+                            <div key={sub.id} className="bg-slate-50 dark:bg-white/5 p-6 rounded-2xl border dark:border-white/5 space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <div className="flex items-center gap-3">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedIds.has(sub.id)}
+                                            onChange={() => toggleSelectRow(sub.id)}
+                                            className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                                        />
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{sub.fecha}</span>
+                                    </div>
+                                    <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase border ${sub.estado === 'Aprobado' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : sub.estado === 'Rechazado' ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                                        {sub.estado}
+                                    </span>
+                                </div>
+                                <div>
+                                    <h4 className="font-black text-slate-800 dark:text-white uppercase text-sm tracking-tight">{sub.areaProceso}</h4>
+                                    <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
+                                        <p className="text-[10px] text-sky-600 font-bold uppercase font-mono">OP: {sub.op}</p>
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase">PLANO: {sub.planoOpc || '-'}</p>
+                                    </div>
+                                    <p className="text-[9px] text-slate-500 font-black uppercase mt-1 tracking-wider">{sub.disenoReferencia}</p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4 py-2 border-y dark:border-white/5">
+                                    <div>
+                                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Total</span>
+                                        <span className="text-xs font-bold">{sub.cantTotal}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Retenida</span>
+                                        <span className="text-xs font-bold text-rose-600">{sub.cantRetenida}</span>
+                                    </div>
+                                </div>
+                                <div className="pt-2 flex justify-between items-center">
+                                    <div className="flex flex-col">
+                                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Responsable</span>
+                                        <span className="text-[10px] font-bold uppercase">{sub.responsable || sub.reviso}</span>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => handleEdit(sub)} className="p-3 bg-white dark:bg-white/5 text-slate-400 rounded-xl hover:text-sky-600 transition-all"><EditIcon /></button>
+                                        <button onClick={() => handleDelete(sub.id)} className="p-3 bg-white dark:bg-white/5 text-slate-400 rounded-xl hover:text-rose-600 transition-all"><TrashIcon /></button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* VISTA DESKTOP: TABLA */}
+                    <div className="hidden md:block responsive-table-container">
+                        <table className="w-full text-left min-w-[1200px]">
                             <thead className="bg-[#4a69bd] text-white text-[9px] font-black uppercase tracking-widest">
                                 <tr>
-                                    <th className="px-6 py-5 border-r border-white/10">FECHA</th>
-                                    <th className="px-6 py-5 border-r border-white/10">ÁREA DE PROCESO</th>
-                                    <th className="px-6 py-5 border-r border-white/10">OP</th>
+                                    <th className="px-4 py-5 border-r border-white/10 text-center">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedIds.size > 0 && selectedIds.size === filteredSubmissions.length}
+                                            onChange={toggleSelectAll}
+                                            className="size-4 rounded border-white/20 bg-transparent text-sky-600 focus:ring-sky-500"
+                                        />
+                                    </th>
+                                    <th className="px-6 py-5 border-r border-white/10 uppercase">Fecha</th>
+                                    <th className="px-6 py-5 border-r border-white/10 uppercase whitespace-nowrap">Área de Proceso</th>
+                                    <th className="px-6 py-5 border-r border-white/10 uppercase">OP</th>
                                     <th className="px-6 py-5 border-r border-white/10">PLANO (OPC)</th>
                                     <th className="px-6 py-5 border-r border-white/10">DISEÑO/REFERENCIA</th>
                                     <th className="px-6 py-5 border-r border-white/10 text-center">CANT TOTAL</th>
@@ -551,17 +863,42 @@ const Forms: React.FC = () => {
                                     <th className="px-6 py-5 border-r border-white/10">REVISÓ</th>
                                     <th className="px-6 py-5 border-r border-white/10">RESPONSABLE</th>
                                     <th className="px-6 py-5 border-r border-white/10">ACCION CORRECTIVA</th>
-                                    <th className="px-6 py-5">OBSERVACION</th>
-                                    <th className="px-6 py-5 text-right">GESTIÓN</th>
+                                    <th className="px-6 py-5 border-r border-white/10">OBSERVACION</th>
+                                    <th className="px-6 py-5 text-center border-r border-white/10">ACCIONES</th>
+                                </tr>
+                                <tr className="bg-white/5 border-b dark:border-white/10">
+                                    <th className="p-2 border-r dark:border-white/5"></th>
+                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.fecha} onChange={e => setColumnFilters({ ...columnFilters, fecha: e.target.value })} /></th>
+                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.areaProceso} onChange={e => setColumnFilters({ ...columnFilters, areaProceso: e.target.value })} /></th>
+                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.op} onChange={e => setColumnFilters({ ...columnFilters, op: e.target.value })} /></th>
+                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.planoOpc} onChange={e => setColumnFilters({ ...columnFilters, planoOpc: e.target.value })} /></th>
+                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.disenoReferencia} onChange={e => setColumnFilters({ ...columnFilters, disenoReferencia: e.target.value })} /></th>
+                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30 text-center" placeholder="F..." value={columnFilters.cantTotal} onChange={e => setColumnFilters({ ...columnFilters, cantTotal: e.target.value })} /></th>
+                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30 text-center" placeholder="F..." value={columnFilters.cantRetenida} onChange={e => setColumnFilters({ ...columnFilters, cantRetenida: e.target.value })} /></th>
+                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.estado} onChange={e => setColumnFilters({ ...columnFilters, estado: e.target.value })} /></th>
+                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.defecto} onChange={e => setColumnFilters({ ...columnFilters, defecto: e.target.value })} /></th>
+                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.reviso} onChange={e => setColumnFilters({ ...columnFilters, reviso: e.target.value })} /></th>
+                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.responsable} onChange={e => setColumnFilters({ ...columnFilters, responsable: e.target.value })} /></th>
+                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.accionCorrectiva} onChange={e => setColumnFilters({ ...columnFilters, accionCorrectiva: e.target.value })} /></th>
+                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.observacion} onChange={e => setColumnFilters({ ...columnFilters, observacion: e.target.value })} /></th>
+                                    <th className="p-2 bg-white/5"></th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-white/5">
                                 {loading ? (
                                     <tr><td colSpan={14} className="px-8 py-24 text-center opacity-50"><p className="font-bold text-sm tracking-tight uppercase">Cargando inspecciones...</p></td></tr>
-                                ) : submissions.length === 0 ? (
-                                    <tr><td colSpan={14} className="px-8 py-24 text-center opacity-20"><p className="font-bold text-sm tracking-tight uppercase">Base de datos operativa vacía</p></td></tr>
-                                ) : submissions.map(sub => (
-                                    <tr key={sub.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-all text-[10px] font-bold">
+                                ) : filteredSubmissions.length === 0 ? (
+                                    <tr><td colSpan={14} className="px-8 py-24 text-center opacity-20"><p className="font-bold text-sm tracking-tight uppercase">Sin resultados para los filtros actuales</p></td></tr>
+                                ) : filteredSubmissions.map(sub => (
+                                    <tr key={sub.id} className={`hover:bg-slate-50 dark:hover:bg-white/5 transition-all text-[10px] font-bold ${selectedIds.has(sub.id) ? 'bg-sky-50/50 dark:bg-sky-900/10' : ''}`}>
+                                        <td className="px-4 py-4 text-center border-r dark:border-white/5">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedIds.has(sub.id)}
+                                                onChange={() => toggleSelectRow(sub.id)}
+                                                className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                                            />
+                                        </td>
                                         <td className="px-6 py-4 text-slate-500 whitespace-nowrap border-r dark:border-white/5">{sub.fecha}</td>
                                         <td className="px-6 py-4 uppercase text-slate-800 dark:text-slate-100 border-r dark:border-white/5">{sub.areaProceso}</td>
                                         <td className="px-6 py-4 font-mono text-sky-700 border-r dark:border-white/5">{sub.op}</td>
@@ -578,10 +915,12 @@ const Forms: React.FC = () => {
                                         <td className="px-6 py-4 uppercase text-slate-600 dark:text-slate-400 border-r dark:border-white/5">{sub.reviso}</td>
                                         <td className="px-6 py-4 uppercase text-slate-600 dark:text-slate-400 border-r dark:border-white/5">{sub.responsable}</td>
                                         <td className="px-6 py-4 text-sky-600 italic border-r dark:border-white/5">{sub.accionCorrectiva}</td>
-                                        <td className="px-6 py-4 max-w-xs truncate">{sub.observacion}</td>
-                                        <td className="px-6 py-4 text-right flex justify-end gap-1">
-                                            <button onClick={() => handleEdit(sub)} className="p-2 text-slate-300 hover:text-sky-600"><EditIcon /></button>
-                                            <button onClick={() => handleDelete(sub.id)} className="p-2 text-slate-300 hover:text-rose-600"><TrashIcon /></button>
+                                        <td className="px-6 py-4 max-w-xs truncate border-r dark:border-white/5">{sub.observacion}</td>
+                                        <td className="px-6 py-4 text-center border-r dark:border-white/5 bg-slate-50/50 dark:bg-white/5">
+                                            <div className="flex justify-center gap-1">
+                                                <button onClick={() => handleEdit(sub)} className="p-2 text-slate-300 hover:text-sky-600 transition-colors" title="Editar"><EditIcon className="scale-75" /></button>
+                                                <button onClick={() => handleDelete(sub.id)} className="p-2 text-slate-300 hover:text-rose-600 transition-colors" title="Eliminar"><TrashIcon className="scale-75" /></button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}

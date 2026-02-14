@@ -9,7 +9,7 @@ import {
 import type { SupervisorTask, OperationalInsight } from '../types';
 import { GoogleGenAI } from "@google/genai";
 import ReactMarkdown from 'react-markdown';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../insforgeClient';
 import { useNotification } from './NotificationSystem';
 
 const PriorityBadge: React.FC<{ priority: string }> = ({ priority }) => {
