@@ -1,6 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
-import { GoogleGenAI } from "@google/genai";
+import { useState, useEffect } from 'react';
 import type { NonConformity, NCSeverity, NCStatus, CAPAAction } from '../types';
 import Breadcrumbs from './Breadcrumbs';
 import {
@@ -119,7 +118,12 @@ const NonConformities: React.FC = () => {
             setIsCreateModalOpen(false);
             addNotification({ type: 'success', title: 'HALLAZGO ABIERTO', message: `No Conformidad ${serial_id} registrada para seguimiento.` });
         } catch (error: any) {
-            addNotification({ type: 'error', title: 'ERROR AL GUARDAR', message: error.message });
+            console.error("Create NC Error:", error);
+            addNotification({
+                type: 'error',
+                title: 'ERROR AL GUARDAR',
+                message: `Detalle técnico: ${error.message || JSON.stringify(error)}`
+            });
         }
     };
 
@@ -213,20 +217,37 @@ const NonConformities: React.FC = () => {
     };
 
     const handleAISuggestion = async () => {
-        // if (!selectedNC?.rca?.why1) return addNotification({ type: 'warning', title: 'FALTA CONTEXTO', message: 'Defina al menos el primer "¿Por qué?" para el análisis.' });
+        if (!selectedNC) return;
         setIsGeneratingAI(true);
         try {
-            const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-            if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
-                throw new Error('API Key de Gemini no configurada.');
-            }
-            const ai = new GoogleGenAI({ apiKey });
-            const prompt = `Analiza la No Conformidad: "${selectedNC.title}". Proceso: ${selectedNC.process}. Descripción del Problema: "${selectedNC.description}". Determina la causa raíz técnica final y sugiere un plan de acción correctivo de 3 pasos (CAPA). Formato: Markdown técnico Alco Proyectos.`;
-            const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
-            const result = await model.generateContent(prompt);
-            const response = await result.response;
-            handleUpdateNC({ ...selectedNC, rca: { ...selectedNC.rca!, aiSuggestedRootCause: response.text() } });
-            addNotification({ type: 'success', title: 'DICTAMEN IA LISTO', message: 'Análisis RCA incorporado al expediente.' });
+            const { analyzeRootCause } = await import('../utils/aiService');
+
+            const analysis = await analyzeRootCause(
+                selectedNC.description || '',
+                `Título: ${selectedNC.title}. Proceso: ${selectedNC.process}. Obra: ${selectedNC.project}`
+            );
+
+            if (!analysis) throw new Error('No se pudo generar el análisis. Verifique la API Key.');
+
+            const updatedRCA = {
+                ...selectedNC.rca,
+                why1: analysis.why1 || '',
+                why2: analysis.why2 || '',
+                why3: analysis.why3 || '',
+                why4: analysis.why4 || '',
+                why5: analysis.why5 || '',
+                rootCause: analysis.rootCause || '',
+                aiSuggestedRootCause: analysis.rootCause // Keep legacy field for compatibility if needed
+            };
+
+            await handleUpdateNC({
+                ...selectedNC,
+                rca: updatedRCA,
+                // Optional: You could also auto-populate a suggested action if you wanted
+                // actions: [...selectedNC.actions, { description: analysis.recommendedAction ... }] 
+            });
+
+            addNotification({ type: 'success', title: 'ANÁLISIS IA COMPLETADO', message: 'Metodología 5 Porqués aplicada exitosamente.' });
         } catch (e: any) {
             console.error('AI Error:', e);
             addNotification({ type: 'error', title: 'ERROR IA', message: e.message || 'Fallo en la conexión con el motor RCA.' });

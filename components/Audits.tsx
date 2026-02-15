@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { GoogleGenAI } from "@google/genai";
+import { useState, useEffect } from 'react';
 import Breadcrumbs from './Breadcrumbs';
 import {
     RobotIcon, SearchIcon, CalendarIcon, BookIcon, CheckCircleIcon,
@@ -254,23 +253,38 @@ const Audits: React.FC = () => {
         if (!selectedAudit || selectedAudit.findings.length === 0) return;
         setIsAnalyzingIA(true);
         try {
-            const apiKey = import.meta.env.VITE_GOOGLE_API_KEY || 'YOUR_API_KEY';
-            const ai = new GoogleGenAI({ apiKey });
-            const prompt = `Actúa como Auditor Líder ISO 9001. Genera un "Resumen Ejecutivo de Auditoría" profesional para el proceso "${selectedAudit.process}". Hallazgos detectados: ${JSON.stringify(selectedAudit.findings)}. El tono debe ser formal, destacando la madurez del sistema y áreas de mejora. Máximo 150 palabras en formato Markdown.`;
-            const response = await ai.models.generateContent({ model: 'gemini-1.5-flash-001', contents: prompt });
-            const summary = response.text;
+            const { generateContent } = await import('../utils/aiService');
 
-            const { error } = await supabase
-                .from('audits')
-                .update({ executive_summary: summary })
-                .eq('id', selectedAudit.id);
+            const prompt = `Actúa como Auditor Líder ISO 9001. Genera un "Resumen Ejecutivo de Auditoría" profesional para el proceso "${selectedAudit.process}". Hallazgos detectados: ${JSON.stringify(selectedAudit.findings)}. El tono debe ser formal, destacando la madurez del sistema y áreas de mejora. Máximo 150 palabras en formato Markdown. Responde SIEMPRE en Español.`;
 
-            if (error) throw error;
+            try {
+                const summary = await generateContent("gemini-1.5-flash-001", prompt);
 
-            const updated = { ...selectedAudit, executiveSummary: summary };
-            setSelectedAudit(updated);
-            setAudits(prev => prev.map(a => a.id === updated.id ? updated : a));
-            addNotification({ type: 'success', title: 'RESUMEN IA GENERADO', message: 'Análisis de madurez incorporado al reporte.' });
+                if (!summary) throw new Error("No se pudo generar el resumen (Respuesta vacía)");
+
+                const { error: updateError } = await supabase
+                    .from('audits')
+                    .update({ executive_summary: summary })
+                    .eq('id', selectedAudit.id);
+
+                if (updateError) throw updateError;
+
+                // Refresh local state
+                const updated = { ...selectedAudit, executiveSummary: summary };
+                setSelectedAudit(updated as any);
+                setAudits(prev => prev.map(a => a.id === updated.id ? updated : a) as any);
+
+                addNotification({ type: 'success', title: 'Generado', message: 'Resumen Ejecutivo creado con éxito.' });
+            } catch (error: any) {
+                console.error("Audit AI Error:", error);
+                addNotification({
+                    type: 'error',
+                    title: 'Error IA',
+                    message: `No se pudo crear el resumen: ${error.message}`
+                });
+            } finally {
+                setIsAnalyzingIA(false); // Assuming setIsAnalyzingIA is the correct state setter
+            }
         } catch (e) {
             console.error(e);
             addNotification({ type: 'error', title: 'ERROR IA', message: 'No se pudo generar el análisis automático.' });

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { InspectionData, AdverseEventData, ExternalForm } from '../types';
 import Breadcrumbs from './Breadcrumbs';
 import TranscriptionButton from './TranscriptionButton';
@@ -13,6 +13,7 @@ import {
     SaveIcon, GlobeIcon, XCircleIcon
 } from '../constants';
 import { useNotification } from './NotificationSystem';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../insforgeClient';
 import BulkUploadButton from './BulkUploadButton';
 
@@ -109,25 +110,80 @@ const Forms: React.FC = () => {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [globalSearch, setGlobalSearch] = useState('');
+    const [filterId, setFilterId] = useState<string | null>(null); // New state for deep link filtering
+    const [sortConfig, setSortConfig] = useState<{ key: string | null; direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' });
     const [columnFilters, setColumnFilters] = useState({
         fecha: '', op: '', areaProceso: '', planoOpc: '', disenoReferencia: '',
         cantTotal: '', cantRetenida: '', estado: '', defecto: '', reviso: '',
         responsable: '', accionCorrectiva: '', observacion: ''
     });
 
+    const handleSort = (key: string) => {
+        setSortConfig(prev => ({
+            key,
+            direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
+        }));
+    };
+
     const filteredSubmissions = useMemo(() => {
-        return submissions.filter(sub => {
-            return Object.entries(columnFilters).every(([key, value]) => {
+        // 0. Strict Filter by ID (Deep Link)
+        if (filterId) {
+            return submissions.filter(s => s.id === filterId);
+        }
+
+        let result = submissions.filter(sub => {
+            // 1. Filtro por columnas específicas
+            const matchesColumns = Object.entries(columnFilters).every(([key, value]) => {
                 if (!value) return true;
                 const fieldVal = String((sub as any)[key] || '').toLowerCase();
                 return fieldVal.includes(value.toLowerCase());
             });
+
+            // 2. Búsqueda Global
+            if (!globalSearch) return matchesColumns;
+
+            const matchesGlobal = Object.values(sub).some(val =>
+                String(val || '').toLowerCase().includes(globalSearch.toLowerCase())
+            );
+
+            return matchesColumns && matchesGlobal;
         });
-    }, [submissions, columnFilters]);
+
+        // 3. Ordenamiento
+        if (sortConfig.key) {
+            result.sort((a, b) => {
+                const aValue = (a as any)[sortConfig.key!] || '';
+                const bValue = (b as any)[sortConfig.key!] || '';
+
+                if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        return result;
+    }, [submissions, columnFilters, globalSearch, sortConfig, filterId]);
+
+    const location = useLocation();
 
     useEffect(() => {
         fetchInspections();
     }, []);
+
+    useEffect(() => {
+        if (location.state) {
+            if (location.state.filterId) {
+                setFilterId(location.state.filterId);
+                // Optional: Automatically open edit mode
+                setEditingId(location.state.filterId);
+            }
+            if (location.state.editingId && !location.state.filterId) {
+                // Fallback for old calls if any
+                setEditingId(location.state.editingId);
+            }
+        }
+    }, [location.state, submissions]);
 
     const fetchInspections = async () => {
         setLoading(true);
@@ -232,45 +288,39 @@ const Forms: React.FC = () => {
 
     const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-    // Initialize Gemini AI
-    const genAI = new GoogleGenAI(import.meta.env.VITE_GOOGLE_GENAI_KEY || '');
-
     const analyzeImage = async () => {
-        if (!formData.photo) {
-            // Load a demo image if none exists (for testing purposes)
-            // Using a placeholder base64 acting as an "industrial part"
-            const demoImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAABiSURBVHgB7c6xCQAgDAVRR9A6g4u4/2QW4QPct8p1CR8zM3O3750A8iJLiSwlspTIUiJLiSwlspTIUiJLiSwlspTIUiJLiSwlspTIUiJLiSwlspTIUiJLiSwlspTIUiJLiyx9I8sF/w49i0kAAAAASUVORK5CYII=';
-            setFormData(prev => ({ ...prev, photo: demoImage }));
-            addNotification({ type: 'info', title: 'MODO DEMO', message: 'Se ha cargado una imagen de prueba. Procesando...' });
-
-            // Allow state to update before proceeding
-            setTimeout(() => executeAnalysis(demoImage), 100);
+        if (!API_KEY || API_KEY.includes('YOUR_GEMINI_API_KEY')) {
+            addNotification({ type: 'error', title: 'CONFIGURACIÓN FALTANTE', message: 'Configure VITE_GEMINI_API_KEY en .env.local con una llave válida.' });
             return;
         }
-        executeAnalysis(formData.photo);
-    };
 
-    const executeAnalysis = async (base64Image: string) => {
-        if (!import.meta.env.VITE_GOOGLE_GENAI_KEY) {
-            addNotification({ type: 'error', title: 'CONFIGURACIÓN FALTANTE', message: 'Falta la API Key de Google GenAI en .env.local' });
-            return;
+        let base64Image = formData.photo;
+        let mimeType = "image/png"; // Default, will try to infer or assume
+
+        if (!base64Image) {
+            // Load a demo image if none exists (for testing purposes)
+            const demoImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAiSURBVHgB7c6xCQAgDAVRR9A6g4u4/2QW4QPct8p1CR8zM3O3750A8iJLiSwlspTIUiJLiSwlspTIUiJLiSwlspTIUiJLiSwlspTIUiJLiSwlspTIUiJLiyx9I8sF/w49i0kAAAAASUVORK5CYII=';
+            setFormData(prev => ({ ...prev, photo: demoImage }));
+            addNotification({ type: 'info', title: 'MODO DEMO', message: 'Se ha cargado una imagen de prueba. Procesando...' });
+            base64Image = demoImage;
+        }
+
+        // Extract base64 data and mime type
+        const parts = base64Image.split(',');
+        if (parts.length > 1) {
+            mimeType = parts[0].match(/:(.*?);/)?.[1] || mimeType;
+            base64Image = parts[1];
+        } else {
+            // If it's just base64 without data URI prefix, assume png
+            mimeType = "image/png";
         }
 
         setIsAnalyzing(true);
         addNotification({ type: 'info', title: 'ANALIZANDO...', message: 'Gemini 1.5 Flash está inspeccionando la imagen...' });
 
         try {
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-            // Clean base64 string
-            const imageParts = [
-                {
-                    inlineData: {
-                        data: base64Image.split(',')[1],
-                        mimeType: "image/png",
-                    },
-                },
-            ];
+            const genAI = new GoogleGenerativeAI(API_KEY);
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-001" });
 
             const prompt = `
                 Analiza esta imagen de una parte industrial / perfil de aluminio. Actúa como un experto inspector de calidad.
@@ -278,13 +328,23 @@ const Forms: React.FC = () => {
                 {
                     "cantTotal": number (conteo de unidades visibles, estimado si es difícil),
                     "defecto": string (uno de: "NINGUNO", "RAYAS", "GOLPES", "DECOLORACION", "REVENTON"),
-                    "observacion": string (descripción técnica breve y profesional del hallazgo)
+                    "observacion": string (descripción técnica breve y profesional del hallazgo en ESPAÑOL)
                 }
                 Si no se detecta defecto, el defecto es "NINGUNO".
+                Asegúrate de que el campo "observacion" esté siempre en ESPAÑOL.
             `;
 
-            const result = await model.generateContent([prompt, ...imageParts]);
-            const response = result.response;
+            const result = await model.generateContent([
+                prompt,
+                {
+                    inlineData: {
+                        data: base64Image,
+                        mimeType: mimeType
+                    }
+                }
+            ]);
+
+            const response = await result.response;
             const text = response.text();
 
             // Parse JSON with cleanup (remove Markdown ```json ... ``` if present)
@@ -589,20 +649,37 @@ const Forms: React.FC = () => {
                         onUploadComplete={fetchInspections}
                         label="Carga Masiva (Excel)"
                         mapping={(row: any) => ({
-                            fecha: parseExcelDate(fuzzyFind(row, ['FECHA', 'DATE', 'DIA', 'CREADO', 'TIMESTAMP'])),
-                            area_proceso: (fuzzyFind(row, ['AREA DE PROCESO', 'AREA', 'PROCESO', 'SECTION', 'DEPARTAMENTO']) || '').toUpperCase(),
-                            op: (fuzzyFind(row, ['OP', 'ORDEN', 'ORDEN DE PRODUCCION', 'PRODUCTION ORDER', 'O.P']) || '').toString().toUpperCase(),
-                            plano_opc: (fuzzyFind(row, ['PLANO (OPC)', 'PLANO', 'ITEM', 'DRAWING', 'REFERENCIA PLANO']) || '').toString().toUpperCase(),
-                            diseno_referencia: (fuzzyFind(row, ['DISEÑO/REFERENCIA', 'DISENO', 'REFERENCIA', 'SISTEMA', 'REF', 'DESIGN']) || '').toUpperCase(),
-                            cant_total: parseInt(fuzzyFind(row, ['CANT TOTAL', 'CANTIDAD', 'TOTAL', 'QTY', 'CANT']) || '0') || 0,
-                            cant_retenida: parseInt(fuzzyFind(row, ['CANT RETENIDA', 'RETENIDA', 'RECHAZADA', 'NG']) || '0') || 0,
-                            estado: fuzzyFind(row, ['ESTADO', 'STATUS', 'SITUACION', 'CONDICION']) || 'Aprobado',
-                            defecto: (fuzzyFind(row, ['DEFECTO', 'FALLA', 'MOTIVO', 'ERROR', 'DEFECT']) || 'NINGUNO').toUpperCase(),
-                            reviso: fuzzyFind(row, ['REVISÓ', 'REVISO', 'INSPECTOR', 'AUDITOR', 'ENCARGADO']) || '',
-                            responsable: (fuzzyFind(row, ['RESPONSABLE', 'OPERARIO', 'OPERADOR', 'WORKER']) || '').toUpperCase(),
-                            accion_correctiva: (fuzzyFind(row, ['ACCION CORRECTIVA', 'ACCION', 'CORRECCION', 'CAPA']) || '').toUpperCase(),
-                            observacion: fuzzyFind(row, ['OBSERVACION', 'HALLAZGO', 'OBSERVACIONES', 'NOTES', 'COMENTARIOS']) || 'NA'
+                            // Campos requeridos por la base de datos (snake_case)
+                            fecha: parseExcelDate(fuzzyFind(row, ['FECHA', 'DATE'])),
+                            area_proceso: String(fuzzyFind(row, ['ÁREA DE PROCESO', 'AREA DE PROCESO', 'AREA']) || '').toUpperCase(),
+                            op: String(fuzzyFind(row, ['OP', 'ORDEN']) || '').toUpperCase(),
+                            plano_opc: String(fuzzyFind(row, ['PLANO (OPC)', 'PLANO', 'ITEM']) || '').toUpperCase(),
+                            diseno_referencia: String(fuzzyFind(row, ['DISEÑO/REFERENCIA', 'DISEÑO', 'REFERENCIA']) || '').toUpperCase(),
+                            cant_total: parseInt(fuzzyFind(row, ['CANT TOTAL', 'CANTIDAD', 'TOTAL']) || '0') || 0,
+                            cant_retenida: parseInt(fuzzyFind(row, ['CANT RETENIDA', 'RETENIDA', 'RECHAZADA']) || '0') || 0,
+                            estado: fuzzyFind(row, ['ESTADO', 'STATUS']) || 'Aprobado',
+                            defecto: String(fuzzyFind(row, ['DEFECTO', 'FALLA']) || 'NINGUNO').toUpperCase(),
+                            reviso: String(fuzzyFind(row, ['REVISÓ', 'REVISO', 'INSPECTOR']) || '').toUpperCase(),
+                            responsable: String(fuzzyFind(row, ['RESPONSABLE', 'OPERARIO']) || '').toUpperCase(),
+                            accion_correctiva: String(fuzzyFind(row, ['ACCION CORRECTIVA', 'ACCION']) || '').toUpperCase(),
+                            observacion: String(fuzzyFind(row, ['OBSERVACION', 'HALLAZGO', 'OBSERVACIONES']) || 'NA')
                         })}
+                        columns={[
+                            // Definición de columnas para la VISTA PREVIA (debe coincidir con Excel y Tabla Principal)
+                            { key: 'fecha', label: 'FECHA' },
+                            { key: 'area_proceso', label: 'ÁREA DE PROCESO' },
+                            { key: 'op', label: 'OP' },
+                            { key: 'plano_opc', label: 'PLANO (OPC)' },
+                            { key: 'diseno_referencia', label: 'DISEÑO/REFERENCIA' },
+                            { key: 'cant_total', label: 'CANT TOTAL' },
+                            { key: 'cant_retenida', label: 'CANT RETENIDA' },
+                            { key: 'estado', label: 'ESTADO' },
+                            { key: 'defecto', label: 'DEFECTO' },
+                            { key: 'reviso', label: 'REVISÓ' },
+                            { key: 'responsable', label: 'RESPONSABLE' },
+                            { key: 'accion_correctiva', label: 'ACCIÓN CORRECTIVA' },
+                            { key: 'observacion', label: 'OBSERVACIÓN' }
+                        ]}
                     />
                     <button onClick={() => setIsLinksViewOpen(!isLinksViewOpen)} className={`flex items-center gap-2 px-4 py-2.5 ${isLinksViewOpen ? 'bg-slate-300 dark:bg-slate-600' : 'bg-[#4b5563] hover:bg-[#374151]'} text-white rounded-lg font-bold text-xs shadow-md transition-all`}><LinkIcon /> Enlaces Externos</button>
                     <button onClick={() => setActiveFormType('general')} className="flex items-center gap-2 px-4 py-2.5 bg-[#005c97] hover:bg-[#004a7a] text-white rounded-lg font-bold text-xs shadow-md transition-all"><PlusIcon /> Nueva Inspección</button>
@@ -776,7 +853,12 @@ const Forms: React.FC = () => {
                             )}
                             <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 rounded-xl shadow-inner border dark:border-white/5 flex-grow md:flex-initial">
                                 <SearchIcon />
-                                <input className="bg-transparent border-none outline-none text-xs font-bold uppercase w-full md:w-48" placeholder="BUSCAR OP..." />
+                                <input
+                                    className="bg-transparent border-none outline-none text-xs font-bold uppercase w-full md:w-48"
+                                    placeholder="BUSCAR..."
+                                    value={globalSearch}
+                                    onChange={(e) => setGlobalSearch(e.target.value)}
+                                />
                             </div>
                         </div>
                     </div>
@@ -851,19 +933,45 @@ const Forms: React.FC = () => {
                                             className="size-4 rounded border-white/20 bg-transparent text-sky-600 focus:ring-sky-500"
                                         />
                                     </th>
-                                    <th className="px-6 py-5 border-r border-white/10 uppercase">Fecha</th>
-                                    <th className="px-6 py-5 border-r border-white/10 uppercase whitespace-nowrap">Área de Proceso</th>
-                                    <th className="px-6 py-5 border-r border-white/10 uppercase">OP</th>
-                                    <th className="px-6 py-5 border-r border-white/10">PLANO (OPC)</th>
-                                    <th className="px-6 py-5 border-r border-white/10">DISEÑO/REFERENCIA</th>
-                                    <th className="px-6 py-5 border-r border-white/10 text-center">CANT TOTAL</th>
-                                    <th className="px-6 py-5 border-r border-white/10 text-center">CANT RETENIDA</th>
-                                    <th className="px-6 py-5 border-r border-white/10">ESTADO</th>
-                                    <th className="px-6 py-5 border-r border-white/10">DEFECTO</th>
-                                    <th className="px-6 py-5 border-r border-white/10">REVISÓ</th>
-                                    <th className="px-6 py-5 border-r border-white/10">RESPONSABLE</th>
-                                    <th className="px-6 py-5 border-r border-white/10">ACCION CORRECTIVA</th>
-                                    <th className="px-6 py-5 border-r border-white/10">OBSERVACION</th>
+                                    <th className="px-6 py-5 border-r border-white/10 uppercase cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('fecha')}>
+                                        <div className="flex items-center gap-2">Fecha {sortConfig.key === 'fecha' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    </th>
+                                    <th className="px-6 py-5 border-r border-white/10 uppercase whitespace-nowrap cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('areaProceso')}>
+                                        <div className="flex items-center gap-2">Área de Proceso {sortConfig.key === 'areaProceso' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    </th>
+                                    <th className="px-6 py-5 border-r border-white/10 uppercase cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('op')}>
+                                        <div className="flex items-center gap-2">OP {sortConfig.key === 'op' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    </th>
+                                    <th className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('planoOpc')}>
+                                        <div className="flex items-center gap-2">PLANO (OPC) {sortConfig.key === 'planoOpc' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    </th>
+                                    <th className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('disenoReferencia')}>
+                                        <div className="flex items-center gap-2">DISEÑO/REFERENCIA {sortConfig.key === 'disenoReferencia' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    </th>
+                                    <th className="px-6 py-5 border-r border-white/10 text-center cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('cantTotal')}>
+                                        <div className="flex items-center justify-center gap-2">CANT TOTAL {sortConfig.key === 'cantTotal' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    </th>
+                                    <th className="px-6 py-5 border-r border-white/10 text-center cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('cantRetenida')}>
+                                        <div className="flex items-center justify-center gap-2">CANT RETENIDA {sortConfig.key === 'cantRetenida' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    </th>
+                                    <th className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('estado')}>
+                                        <div className="flex items-center gap-2">ESTADO {sortConfig.key === 'estado' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    </th>
+                                    <th className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('defecto')}>
+                                        <div className="flex items-center gap-2">DEFECTO {sortConfig.key === 'defecto' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    </th>
+                                    <th className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('reviso')}>
+                                        <div className="flex items-center gap-2">REVISÓ {sortConfig.key === 'reviso' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    </th>
+                                    <th className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('responsable')}>
+                                        <div className="flex items-center gap-2">RESPONSABLE {sortConfig.key === 'responsable' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    </th>
+                                    <th className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('accionCorrectiva')}>
+                                        <div className="flex items-center gap-2">ACCION CORRECTIVA {sortConfig.key === 'accionCorrectiva' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    </th>
+                                    <th className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('observacion')}>
+                                        <div className="flex items-center gap-2">OBSERVACION {sortConfig.key === 'observacion' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    </th>
                                     <th className="px-6 py-5 text-center border-r border-white/10">ACCIONES</th>
                                 </tr>
                                 <tr className="bg-white/5 border-b dark:border-white/10">

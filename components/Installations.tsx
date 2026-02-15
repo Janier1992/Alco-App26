@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import Breadcrumbs from './Breadcrumbs';
 import {
     ConstructionIcon, ShieldCheckIcon, RobotIcon, RulerIcon,
@@ -32,13 +32,14 @@ const Installations: React.FC = () => {
         addNotification({ type: 'info', title: 'CONSULTOR IA', message: 'Analizando requerimiento técnico de obra...' });
 
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY);
+            const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
             const prompt = `Actúa como Experto en Instalaciones Alco. Pregunta: "${aiQuery}". 
             Responde de forma técnica citando NSR-10 o estándares de estanqueidad si aplica. Sé breve.`;
-            const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
+            const response = await model.generateContent(prompt);
 
             // Simulamos respuesta en modal o alerta por ahora
-            alert(`DICTAMEN IA: ${response.text}`);
+            alert(`DICTAMEN IA: ${response.response.text()}`);
             setAiQuery('');
         } catch (e) {
             addNotification({ type: 'error', title: 'FALLO IA', message: 'No se pudo procesar la consulta técnica.' });

@@ -9,9 +9,10 @@ interface BulkUploadButtonProps {
     onUploadComplete: () => void;
     label?: string;
     mapping?: (row: any) => any;
+    columns?: { key: string; label: string }[];
 }
 
-const BulkUploadButton: React.FC<BulkUploadButtonProps> = ({ tableName, onUploadComplete, label = 'Carga Masiva (Excel)', mapping }) => {
+const BulkUploadButton: React.FC<BulkUploadButtonProps> = ({ tableName, onUploadComplete, label = 'Carga Masiva (Excel)', mapping, columns }) => {
     const { addNotification } = useNotification();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -145,19 +146,29 @@ const BulkUploadButton: React.FC<BulkUploadButtonProps> = ({ tableName, onUpload
                                 <table className="w-full text-xs text-left">
                                     <thead className="bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 font-bold uppercase">
                                         <tr>
-                                            {previewData.length > 0 && Object.keys(previewData[0]).map(k => (
-                                                <th key={k} className="px-4 py-3 whitespace-nowrap">{k}</th>
-                                            ))}
+                                            {columns
+                                                ? columns.map(c => <th key={c.key} className="px-4 py-3 whitespace-nowrap">{c.label}</th>)
+                                                : (previewData.length > 0 && Object.keys(previewData[0]).map(k => (
+                                                    <th key={k} className="px-4 py-3 whitespace-nowrap">{k}</th>
+                                                )))
+                                            }
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 dark:divide-white/5 bg-white dark:bg-[#1a1b26]">
                                         {previewData.map((row, i) => (
                                             <tr key={i} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
-                                                {Object.values(row).map((val: any, j) => (
-                                                    <td key={j} className="px-4 py-3 whitespace-nowrap text-slate-700 dark:text-slate-300">
-                                                        {val === null || val === '' ? <span className="text-rose-500 font-bold italic">VACÍO</span> : String(val)}
-                                                    </td>
-                                                ))}
+                                                {columns
+                                                    ? columns.map(c => (
+                                                        <td key={c.key} className="px-4 py-3 whitespace-nowrap text-slate-700 dark:text-slate-300">
+                                                            {row[c.key] === null || row[c.key] === '' ? <span className="text-rose-500 font-bold italic">VACÍO</span> : String(row[c.key])}
+                                                        </td>
+                                                    ))
+                                                    : Object.values(row).map((val: any, j) => (
+                                                        <td key={j} className="px-4 py-3 whitespace-nowrap text-slate-700 dark:text-slate-300">
+                                                            {val === null || val === '' ? <span className="text-rose-500 font-bold italic">VACÍO</span> : String(val)}
+                                                        </td>
+                                                    ))
+                                                }
                                             </tr>
                                         ))}
                                     </tbody>

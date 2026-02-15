@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import {
     RobotIcon, MicrophoneIcon, CameraIcon, ChevronRightIcon,
     GlobeIcon, LinkIcon, SparklesIcon, XCircleIcon
@@ -8,6 +9,9 @@ import {
 import type { AgentMessage, AgentPersona } from '../types';
 import ReactMarkdown from 'react-markdown';
 import { useAgent } from './AgentContext';
+import { useNotification } from './NotificationSystem';
+
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GOOGLE_GENAI_KEY;
 
 // --- Audio Utils ---
 function base64ToUint8Array(base64: string): Uint8Array {
@@ -46,61 +50,71 @@ async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: 
     return buffer;
 }
 
+const LOCATION_MAP: Record<string, string> = {
+    'dashboard': 'Estás en el Dashboard Principal. Tienes visibilidad de los KPIs globales.',
+    'nc': 'Estás en el módulo de No Conformidades. Puedes ayudar a analizar causas raíz y redactar acciones correctivas.',
+    'forms': 'Estás en Formularios. Ayuda a verificar tolerancias y criterios de aceptación.',
+    'audits': 'Estás en Auditorías. Sugiere preguntas de auditoría basadas en ISO 9001.',
+    'projects': 'Estás en Gestión de Proyectos. Analiza cronogramas y riesgos.',
+};
+
 const getContextFromPath = (path: string): string => {
-    if (path.includes('dashboard')) return 'Estás en el Dashboard Principal. Tienes visibilidad de los KPIs globales.';
-    if (path.includes('nc')) return 'Estás en el módulo de No Conformidades. Puedes ayudar a analizar causas raíz y redactar acciones correctivas.';
-    if (path.includes('forms')) return 'Estás en Formularios. Ayuda a verificar tolerancias y criterios de aceptación.';
-    if (path.includes('audits')) return 'Estás en Auditorías. Sugiere preguntas de auditoría basadas en ISO 9001.';
-    if (path.includes('projects')) return 'Estás en Gestión de Proyectos. Analiza cronogramas y riesgos.';
+    for (const key in LOCATION_MAP) {
+        if (path.includes(key)) return LOCATION_MAP[key];
+    }
     return 'Estás en el menú principal.';
 };
 
+
+
 const getSystemContext = (useSearch: boolean, currentPath: string, persona: AgentPersona = 'Global') => {
-    const baseContext = `Eres "Agente Calidad", el Sistema Inteligente de Alco. CONTEXTO ACTUAL: ${getContextFromPath(currentPath)}`;
+    const baseContext = `Eres "Agente Calidad", el Sistema Inteligente de Alco.CONTEXTO ACTUAL: ${getContextFromPath(currentPath)} `;
 
     const personaPrompts: Record<AgentPersona, string> = {
         Global: `
-        ROL: Coordinador General de Calidad.
-        OBJETIVO: Visión holística del sistema.
+ROL: Coordinador General de Calidad.
+    OBJETIVO: Visión holística del sistema.
         ESTILO: Formal, directivo y estratégico.
-        `,
+`,
         Ops: `
-        ROL: Asistente de Operaciones y Producción.
-        OBJETIVO: Resolver dudas técnicas inmediatas en planta.
+ROL: Asistente de Operaciones y Producción.
+    OBJETIVO: Resolver dudas técnicas inmediatas en planta.
         ESTILO: Práctico, breve y técnico. "Al grano".
-        COMPETENCIAS: Interpretación de Planos, Tolerancias, Maquinaria.
-        `,
+            COMPETENCIAS: Interpretación de Planos, Tolerancias, Maquinaria.
+`,
         QA: `
-        ROL: Auditor Senior de Calidad (QC/QA).
-        OBJETIVO: Detección rigurosa de desviaciones.
-        ESTILO: Analítico, basado en evidencia y normativa ISO 9001/ASTM.
-        `,
+ROL: Auditor Senior de Calidad(QC / QA).
+    OBJETIVO: Detección rigurosa de desviaciones.
+        ESTILO: Analítico, basado en evidencia y normativa ISO 9001 / ASTM.
+`,
         Project: `
-        ROL: Gestor de Proyectos (PM).
-        OBJETIVO: Control de cronograma y riesgos.
+ROL: Gestor de Proyectos(PM).
+    OBJETIVO: Control de cronograma y riesgos.
         ESTILO: Orientado a plazos y riesgos.
-        `,
+`,
         Supply: `
-        ROL: Analista de Proveedores y Compras.
-        OBJETIVO: Aseguramiento de calidad de insumos.
+ROL: Analista de Proveedores y Compras.
+    OBJETIVO: Aseguramiento de calidad de insumos.
         ESTILO: Negociador y detallista.
-        `
+`
     };
 
     return `
-    ${baseContext}
-    
-    TU IDENTIDAD ACTIVA: ${personaPrompts[persona]}
-    
-    CAPACIDADES GENERALES:
-    - ${useSearch ? 'ACCESO ONLINE ACTIVADO: Valida datos en tiempo real.' : 'MODO OFFLINE: Responde con tu base de conocimiento interna.'}
-    - MÉTODO DE RESPUESTA: Usa Markdown. Sé conciso. Si detectas riesgo, inicia con [ALERTA].
-    `;
+${baseContext}
+
+TU IDENTIDAD ACTIVA: ${personaPrompts[persona]}
+
+CAPACIDADES GENERALES:
+- ${useSearch ? 'ACCESO ONLINE ACTIVADO: Valida datos en tiempo real.' : 'MODO OFFLINE: Responde con tu base de conocimiento interna.'}
+- MÉTODO DE RESPUESTA: Usa Markdown.Sé conciso.Si detectas riesgo, inicia con[ALERTA].
+- IDIOMA: Responde SIEMPRE en Español, a menos que se solicite explícitamente otro idioma para una traducción.
+`;
 };
 
 const AgentHub: React.FC = () => {
     const { isAgentOpen, toggleAgent, activeDocument, setActiveDocument } = useAgent();
-    // const [isOpen, setIsOpen] = useState(false); // Replaced by context
+    // Use notification system
+    const { addNotification } = useNotification();
     const [mode, setMode] = useState<'text' | 'voice'>('text');
     const [useGoogleSearch, setUseGoogleSearch] = useState(true);
     const [activeAgent, setActiveAgent] = useState<AgentPersona>('Global');
@@ -123,12 +137,32 @@ const AgentHub: React.FC = () => {
     const outputAudioContext = useRef<AudioContext | null>(null);
     const outputNode = useRef<GainNode | null>(null);
     const sources = useRef<Set<AudioBufferSourceNode>>(new Set());
-    const sessionPromise = useRef<Promise<any> | null>(null);
+    const sessionPromise = useRef<Promise<any> | null>(null); // Kept for type compatibility but might change
     const streamRef = useRef<MediaStream | null>(null);
     const processorRef = useRef<ScriptProcessorNode | null>(null);
     const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [voiceStatus, setVoiceStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
+    const wsRef = useRef<WebSocket | null>(null); // For manual WebSocket
+
+    // DEBUG: List Models on Mount
+    useEffect(() => {
+        const checkModels = async () => {
+            if (!API_KEY) return;
+            try {
+                // Attempt to force v1alpha if the SDK supports 'version' or 'apiVersion' in config
+                // If not, it will just ignore it.
+                // @ts-ignore
+                const ai = new GoogleGenerativeAI(API_KEY);
+                // @ts-ignore
+                const models = await ai.listModels();
+                console.log("🤖 AVAILABLE MODELS:", models);
+            } catch (e) {
+                console.error("DEBUG: Could not list models:", e);
+            }
+        };
+        checkModels();
+    }, []);
 
     useEffect(() => {
         if (isAgentOpen) {
@@ -158,7 +192,10 @@ const AgentHub: React.FC = () => {
         setIsProcessing(true);
 
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            if (!API_KEY) throw new Error("API Key no configurada");
+            const genAI = new GoogleGenerativeAI(API_KEY);
+
+            // Prepare Prompt Parts
             const parts: any[] = [{ text: input || 'Analiza esta situación técnica.' }];
 
             // Add active document if present
@@ -169,44 +206,54 @@ const AgentHub: React.FC = () => {
                         mimeType: activeDocument.mime
                     }
                 });
-                parts.unshift({ text: `[SYSTEM] El usuario está visualizando el documento "${activeDocument.name}". Úsalo como contexto principal si es relevante.` });
+                parts.unshift({ text: `[SYSTEM] El usuario está visualizando el documento "${activeDocument.name}".Úsalo como contexto principal si es relevante.` });
             }
 
             if (attachedImage) {
                 parts.push({ inlineData: { data: attachedImage.data, mimeType: attachedImage.mime } });
             }
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-1.5-flash-001', // Standard stable version
-                contents: { parts },
-                config: {
-                    systemInstruction: getSystemContext(useGoogleSearch, location.pathname, activeAgent),
-                    tools: useGoogleSearch ? [{ googleSearch: {} }] : undefined
-                }
-            });
+            // System Instruction
+            const systemInstruction = getSystemContext(useGoogleSearch, location.pathname, activeAgent);
 
-            // Extract Grounding
-            const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-            if (chunks) {
-                const links = chunks.filter((c: any) => c.web).map((c: any) => ({
-                    title: c.web.title,
-                    uri: c.web.uri
-                }));
-                setGroundingSources(links);
+            let responseText = "";
+            let usedModel = "gemini-1.5-flash-001";
+
+            try {
+                // Attempt 1: Gemini 1.5 Flash
+                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-001", systemInstruction: { parts: [{ text: systemInstruction }] }, tools: useGoogleSearch ? [{ googleSearch: {} }] : undefined });
+                const result = await model.generateContent(parts);
+                const response = await result.response;
+                responseText = response.text();
+            } catch (err1: any) {
+                console.warn("Flash failed, trying Pro:", err1);
+                // Attempt 2: Gemini 1.5 Pro
+                usedModel = "gemini-1.5-pro-001";
+                const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro-001", systemInstruction: { parts: [{ text: systemInstruction }] }, tools: useGoogleSearch ? [{ googleSearch: {} }] : undefined });
+                const result = await model.generateContent(parts);
+                const response = await result.response;
+                responseText = response.text();
             }
+
+            // Mock Grounding for now as client SDK might handle it differently or requires specific setup
+            // (Client SDK usually exposes it in result.response.candidates[0].citationMetadata or similar)
 
             const agentMsg: AgentMessage = {
                 id: (Date.now() + 1).toString(),
                 role: 'agent',
-                content: response.text || 'He procesado tu solicitud.'
+                content: responseText || 'He procesado tu solicitud.'
             };
             setMessages(prev => [...prev, agentMsg]);
             setAttachedImage(null);
+
         } catch (error: any) {
             console.error("AI Error:", error);
-            const apiKeyPresent = !!process.env.API_KEY;
-            console.log("API Key present:", apiKeyPresent);
-            setMessages(prev => [...prev, { id: 'err', role: 'agent', content: `⚠️ Error de conexión: ${error.message || 'Desconocido'}. (Key Presente: ${apiKeyPresent ? 'SÍ' : 'NO'})` }]);
+            const apiKeyPresent = !!API_KEY;
+            setMessages(prev => [...prev, {
+                id: 'err',
+                role: 'agent',
+                content: `⚠️ ** Error de Sistema **\n\n${error.message || 'Error desconocido'} \n\n * Diagnóstico:*\n - API Key: ${apiKeyPresent ? 'SÍ' : 'NO'} \n - Modelo: ${API_KEY ? 'gemini-1.5-flash/pro' : 'N/A'} \n - SDK: @google/generative-ai`
+            }]);
         } finally {
             setIsProcessing(false);
         }
@@ -214,14 +261,26 @@ const AgentHub: React.FC = () => {
 
     // Voice logic
     const stopVoiceSession = () => {
+        if (wsRef.current) {
+            wsRef.current.close();
+            wsRef.current = null;
+        }
         sources.current?.forEach(source => { try { source.stop(); } catch (e) { } });
         sources.current?.clear();
-        streamRef.current?.getTracks().forEach(track => track.stop());
-        processorRef.current?.disconnect();
-        sourceRef.current?.disconnect();
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+        }
+        if (processorRef.current) {
+            processorRef.current.disconnect();
+            processorRef.current = null;
+        }
+        if (sourceRef.current) {
+            sourceRef.current.disconnect();
+            sourceRef.current = null;
+        }
         inputAudioContext.current?.close().catch(() => { });
         outputAudioContext.current?.close().catch(() => { });
-        sessionPromise.current = null;
         setVoiceStatus('disconnected');
         setIsSpeaking(false);
     };
@@ -229,9 +288,12 @@ const AgentHub: React.FC = () => {
     const startVoiceSession = async () => {
         try {
             setVoiceStatus('connecting');
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            if (!API_KEY) throw new Error("API Key no configurada");
+
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             streamRef.current = stream;
+
+            // Audio Contexts
             const ctxIn = new (window.AudioContext || (window as any).webkitAudioContext)();
             const ctxOut = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
             inputAudioContext.current = ctxIn;
@@ -239,58 +301,108 @@ const AgentHub: React.FC = () => {
             outputNode.current = ctxOut.createGain();
             outputNode.current.connect(ctxOut.destination);
 
-            let personaInstruction = getSystemContext(false, location.pathname, activeAgent);
+            // Manual WebSocket Connection for Live API
+            const host = "generativelanguage.googleapis.com";
+            const url = `wss://${host}/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${API_KEY}`;
+            const ws = new WebSocket(url);
+            wsRef.current = ws;
 
-            sessionPromise.current = ai.live.connect({
-                model: 'gemini-2.5-flash-native-audio-preview-12-2025',
-                config: {
-                    responseModalities: [Modality.AUDIO],
-                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
-                    systemInstruction: personaInstruction,
-                },
-                callbacks: {
-                    onopen: () => {
-                        setVoiceStatus('connected');
-                        const source = ctxIn.createMediaStreamSource(stream);
-                        const script = ctxIn.createScriptProcessor(4096, 1, 1);
-                        script.onaudioprocess = (e) => {
-                            const inputData = e.inputBuffer.getChannelData(0);
-                            const l = inputData.length;
-                            const int16 = new Int16Array(l);
-                            for (let i = 0; i < l; i++) { int16[i] = inputData[i] * 32768; }
-                            sessionPromise.current?.then(s => s.sendRealtimeInput({
-                                media: { data: arrayBufferToBase64(int16.buffer), mimeType: 'audio/pcm;rate=16000' }
-                            }));
-                        };
-                        source.connect(script);
-                        script.connect(ctxIn.destination);
-                        processorRef.current = script;
-                        sourceRef.current = source;
-                    },
-                    onmessage: async (msg: LiveServerMessage) => {
-                        const base64 = msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-                        if (base64) {
-                            setIsSpeaking(true);
-                            const audioBuffer = await decodeAudioData(base64ToUint8Array(base64), ctxOut, 24000, 1);
-                            const source = ctxOut.createBufferSource();
-                            source.buffer = audioBuffer;
-                            source.connect(outputNode.current!);
-                            nextStartTime.current = Math.max(nextStartTime.current, ctxOut.currentTime);
-                            source.start(nextStartTime.current);
-                            nextStartTime.current += audioBuffer.duration;
-                            sources.current.add(source);
-                            source.onended = () => {
-                                sources.current.delete(source);
-                                if (sources.current.size === 0) setIsSpeaking(false);
-                            };
+            ws.onopen = () => {
+                setVoiceStatus('connected');
+                // Initial Setup Message
+                const setupMsg = {
+                    setup: {
+                        model: "models/gemini-2.0-flash-exp",
+                        generationConfig: {
+                            responseModalities: ["AUDIO"],
+                            speechConfig: {
+                                voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } }
+                            }
+                        },
+                        systemInstruction: {
+                            parts: [{ text: getSystemContext(false, location.pathname, activeAgent) }]
                         }
-                    },
-                    onerror: (e) => console.error(e),
-                    onclose: () => stopVoiceSession()
+                    }
+                };
+                ws.send(JSON.stringify(setupMsg));
+
+                // Start Audio Processing
+                const source = ctxIn.createMediaStreamSource(stream);
+                const script = ctxIn.createScriptProcessor(4096, 1, 1);
+
+                script.onaudioprocess = (e) => {
+                    const inputData = e.inputBuffer.getChannelData(0);
+                    const l = inputData.length;
+                    const int16 = new Int16Array(l);
+                    for (let i = 0; i < l; i++) { int16[i] = inputData[i] * 32768; }
+
+                    // Send Realtime Input
+                    const audioMsg = {
+                        realtime_input: {
+                            media_chunks: [{
+                                mime_type: "audio/pcm;rate=16000",
+                                data: arrayBufferToBase64(int16.buffer)
+                            }]
+                        }
+                    };
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify(audioMsg));
+                    }
+                };
+
+                source.connect(script);
+                script.connect(ctxIn.destination);
+                processorRef.current = script;
+                sourceRef.current = source;
+            };
+
+            ws.onmessage = async (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    // Check for server_content with model_turn and parts
+                    const base64 = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
+                    if (base64) {
+                        setIsSpeaking(true);
+                        const audioBuffer = await decodeAudioData(base64ToUint8Array(base64), ctxOut, 24000, 1);
+                        const source = ctxOut.createBufferSource();
+                        source.buffer = audioBuffer;
+                        source.connect(outputNode.current!);
+                        nextStartTime.current = Math.max(nextStartTime.current, ctxOut.currentTime);
+                        source.start(nextStartTime.current);
+                        nextStartTime.current += audioBuffer.duration;
+                        sources.current.add(source);
+                        source.onended = () => {
+                            sources.current.delete(source);
+                            if (sources.current.size === 0) setIsSpeaking(false);
+                        };
+                    }
+                } catch (e) {
+                    console.error("WS Message Parse Error", e);
                 }
-            });
+            };
+
+            ws.onerror = (e) => {
+                console.error("WebSocket Error:", e);
+                setVoiceStatus('disconnected');
+                addNotification({
+                    type: 'error',
+                    title: 'Error de Conexión',
+                    message: 'Falló la conexión de voz. Verifique su API Key o permisos de red.'
+                });
+            };
+
+            ws.onclose = () => {
+                stopVoiceSession();
+            };
+
         } catch (err) {
+            console.error("Voice Session Error:", err);
             setVoiceStatus('disconnected');
+            setMessages(prev => [...prev, {
+                id: 'err_voice',
+                role: 'agent',
+                content: `⚠️ **Error de Voz**\n\nNo se pudo conectar con el modo Live`
+            }]);
         }
     };
 

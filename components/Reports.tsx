@@ -5,7 +5,7 @@ import {
     ResponsiveContainer, Cell, AreaChart, Area, LineChart, Line,
     PieChart, Pie
 } from 'recharts';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import {
     MOCK_CHART_DATA, FileAltIcon, ChartLineIcon, RefreshIcon,
     RobotIcon, CheckCircleIcon, ExclamationTriangleIcon,
@@ -49,19 +49,18 @@ const ReportGenerator: React.FC = () => {
                 topProcess: reportParams.area === 'all' ? 'Pintura' : reportParams.area
             };
 
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const prompt = `Actúa como Director de Calidad de Alco Proyectos. Genera un reporte BI para el periodo: ${reportParams.dateRange}. 
+            const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY);
+            const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+            prompt = `Actúa como Director de Calidad de Alco Proyectos. Genera un reporte BI para el periodo: ${reportParams.dateRange}. 
             Tipo: ${reportParams.reportType}. Datos: NCs Activas: ${mockContext.ncs}, Calibraciones Vencidas: ${mockContext.calibVenc}, OEE: ${mockContext.oee}%. 
             Análisis específico para el área: ${reportParams.area === 'all' ? 'PLANTA GENERAL' : reportParams.area}.
             Estructura: 1. Resumen Gerencial, 2. Análisis de Riesgos en Proceso ${mockContext.topProcess}, 3. Tres Recomendaciones de Mejora Continua (CAPA) enfocadas en Calidad ISO 9001. Usa Markdown profesional.`;
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-1.5-flash',
-                contents: prompt
-            });
+            const response = await model.generateContent(prompt);
+            const text = response.response.text();
 
             setBiData({
-                analysis: response.text,
+                analysis: text,
                 kpis: mockContext,
                 timestamp: new Date().toLocaleString(),
                 trends: MOCK_CHART_DATA.qualityTrend.map(d => ({ ...d, value: d.value + (Math.random() * 5 - 2.5) }))

@@ -7,7 +7,7 @@ import {
     RobotIcon
 } from '../constants';
 import type { SupervisorTask, OperationalInsight } from '../types';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import ReactMarkdown from 'react-markdown';
 import { supabase } from '../insforgeClient';
 import { useNotification } from './NotificationSystem';
@@ -107,20 +107,17 @@ const OperationalIntelligence: React.FC = () => {
     const generateAiInsights = async () => {
         setIsGenerating(true);
         try {
-            const apiKey = import.meta.env.VITE_GOOGLE_API_KEY || 'YOUR_API_KEY';
-            const ai = new GoogleGenAI({ apiKey });
+            const apiKey = import.meta.env.VITE_GEMINI_API_KEY || 'YOUR_API_KEY';
+            const ai = new GoogleGenerativeAI(apiKey);
+            const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
             const pendingParams = tasks.filter(t => t.status === 'Pending').map(t => t.title).join(', ');
             const prompt = `Actúa como Supervisor Senior de Calidad. Tengo un Score de Cumplimiento de ${score}/100.
             Tareas pendientes críticas: ${pendingParams}.
             Genera 3 recomendaciones operativas tácticas (muy breves y directas) para mejorar el turno.
             Usa formato Markdown con viñetas.`;
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-1.5-flash-001',
-                contents: prompt
-            });
-
-            setAiRecommendations(response.text);
+            const response = await model.generateContent(prompt);
+            setAiRecommendations(response.response.text());
         } catch (error) {
             console.error(error);
             setAiRecommendations("⚠️ No pude conectar con el cerebro de operaciones. Verifica tu conexión.");

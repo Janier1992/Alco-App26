@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { GoogleGenAI } from "@google/genai";
+import { useState, useEffect } from 'react';
 import Breadcrumbs from './Breadcrumbs';
 import {
     RobotIcon, PlusIcon, SaveIcon, TrashIcon, EditIcon,
@@ -64,13 +63,40 @@ const QualityClaims: React.FC = () => {
         if (!formData.description) return addNotification({ type: 'warning', title: 'SIN CONTEXTO', message: 'Describa el problema para redactar el informe.' });
         setIsGenerating(true);
         try {
-            const apiKey = import.meta.env.VITE_GOOGLE_API_KEY || 'YOUR_API_KEY';
-            const ai = new GoogleGenAI({ apiKey });
-            const prompt = `Actúa como Director de Calidad de AlcoSAS. Redacta un ${formData.docType} formal para el cliente ${formData.client} en la obra ${formData.project}. Descripción: "${formData.description}". Cita NTC 2409 y estándares Qualicoat. Propón 3 recomendaciones técnicas. Usa Markdown profesional.`;
-            const response = await ai.models.generateContent({ model: 'gemini-2.0-flash-exp', contents: prompt });
-            setFormData(prev => ({ ...prev, officialContent: response.text }));
+            const { analyzeClaim } = await import('../utils/aiService');
+
+            const analysis = await analyzeClaim(`
+                Cliente: ${formData.client}. 
+                Proyecto: ${formData.project}. 
+                Asunto: ${formData.docType}.
+                Descripción: ${formData.description}
+            `);
+
+            if (!analysis) throw new Error('No se pudo generar el análisis.');
+
+            const markdownReport = `
+### 🤖 Análisis de Inteligencia Artificial
+
+**Clasificación**: ${analysis.category || 'General'}
+**Severidad Detectada**: ${analysis.severity || 'Media'}
+
+---
+### 📝 Respuesta Sugerida
+${analysis.suggestedResponse}
+
+---
+### ✅ Pasos Recomendados
+${analysis.actionItems?.map((item: string) => `- ${item}`).join('\n') || 'Revisar manual de calidad.'}
+            `;
+
+            setFormData(prev => ({
+                ...prev,
+                officialContent: markdownReport,
+                priority: analysis.severity as any || prev.priority
+            }));
+
             addNotification({ type: 'success', title: 'REDACCIÓN IA COMPLETA', message: 'Informe técnico generado con éxito.' });
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
             addNotification({ type: 'error', title: 'FALLO TÉCNICO', message: 'No se pudo conectar con los motores de redacción.' });
         } finally {
@@ -119,9 +145,13 @@ const QualityClaims: React.FC = () => {
             }
             fetchClaims(); // Refresh list
 
-        } catch (error) {
-            console.error(error);
-            addNotification({ type: 'error', title: 'Error', message: 'No se pudo guardar el registro.' });
+        } catch (error: any) {
+            console.error("Save Error:", error);
+            addNotification({
+                type: 'error',
+                title: 'Error de Guardado',
+                message: error.message || 'Error desconocido al guardar.'
+            });
         }
     };
 

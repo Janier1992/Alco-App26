@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { MicrophoneIcon, RefreshIcon } from '../constants';
 import { useNotification } from './NotificationSystem';
 
@@ -69,28 +69,23 @@ const TranscriptionButton: React.FC<TranscriptionButtonProps> = ({ onTranscripti
             reader.readAsDataURL(blob);
             reader.onloadend = async () => {
                 const base64Audio = (reader.result as string).split(',')[1];
-                const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+                const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY);
+                const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-                const response = await ai.models.generateContent({
-                    model: 'gemini-3-flash-preview',
-                    contents: {
-                        parts: [
-                            {
-                                inlineData: {
-                                    mimeType: 'audio/webm',
-                                    data: base64Audio,
-                                },
-                            },
-                            {
-                                text: smartMode
-                                    ? "Actúa como un asistente de llenado de formularios de calidad. Extrae los datos técnicos del audio y devuélvelos en formato JSON estricto (sin markdown) con las siguientes claves si se mencionan: 'op', 'areaProceso', 'planoOpc', 'cantTotal' (número), 'defecto', 'estado', 'observacion'. Si no hay datos claros, devuelve un JSON con la clave 'observacion' que contenga el texto transcrito."
-                                    : "Actúa como transcriptor experto en manufactura. Transcribe este audio exactamente. Si hay errores gramaticales o de dicción, corrígelos para que suenen técnicos y profesionales. Devuelve solo el texto final."
-                            },
-                        ],
-                    },
-                });
+                const prompt = smartMode
+                    ? "Actúa como un asistente de llenado de formularios de calidad. Extrae los datos técnicos del audio y devuélvelos en formato JSON estricto (sin markdown) con las siguientes claves si se mencionan: 'op', 'areaProceso', 'planoOpc', 'cantTotal' (número), 'defecto', 'estado', 'observacion'. Si no hay datos claros, devuelve un JSON con la clave 'observacion' que contenga el texto transcrito."
+                    : "Actúa como transcriptor experto en manufactura. Transcribe este audio exactamente. Si hay errores gramaticales o de dicción, corrígelos para que suenen técnicos y profesionales. Devuelve solo el texto final.";
 
-                const transcribedText = response.text || "";
+                const response = await model.generateContent([
+                    prompt,
+                    {
+                        inlineData: {
+                            mimeType: 'audio/webm',
+                            data: base64Audio
+                        }
+                    }
+                ]);
+                const transcribedText = response.response.text() || "";
                 if (transcribedText.trim()) {
                     onTranscription(transcribedText);
                     addNotification({ type: 'success', title: 'DICTADO PROCESADO', message: 'Texto integrado en el formulario.' });
@@ -112,8 +107,8 @@ const TranscriptionButton: React.FC<TranscriptionButtonProps> = ({ onTranscripti
             onClick={isRecording ? stopRecording : startRecording}
             disabled={isTranscribing}
             className={`flex items-center justify-center transition-all p-3 rounded-2xl ${isRecording
-                    ? 'bg-rose-500 text-white animate-pulse shadow-lg shadow-rose-500/30'
-                    : 'bg-slate-100 dark:bg-slate-700 text-[#5d5fef] hover:bg-slate-200 dark:hover:bg-slate-600'
+                ? 'bg-rose-500 text-white animate-pulse shadow-lg shadow-rose-500/30'
+                : 'bg-slate-100 dark:bg-slate-700 text-[#5d5fef] hover:bg-slate-200 dark:hover:bg-slate-600'
                 } ${isTranscribing ? 'opacity-50 cursor-wait' : 'hover:scale-110 active:scale-95'} ${className}`}
             title={isRecording ? "Detener Dictado" : "Iniciar Dictado por Voz"}
         >
