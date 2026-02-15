@@ -1,8 +1,0 @@
-{
-  "name": "Alco Proyectos",
-  "description": "A comprehensive suite for managing quality control, documents, and performance indicators for Alco Manufacturing projects. This application provides tools for inspection forms, a document library, and data visualization dashboards.",
-  "requestFramePermissions": [
-    "camera",
-    "microphone"
-  ]
-}
