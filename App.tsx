@@ -164,6 +164,7 @@ const App: React.FC = () => {
                             </Routes>
                         </React.Suspense>
                     </HashRouter>
+                    <ReloadPrompt />
                 </AgentProvider>
             </NotificationProvider>
         </ThemeProvider>

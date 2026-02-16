@@ -17,29 +17,32 @@ export default defineConfig(({ mode }) => {
         registerType: 'autoUpdate',
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
         manifest: {
-          name: 'Alco Proyectos',
-          short_name: 'AlcoApp',
-          description: 'Gestión de Calidad y Proyectos - App Alco',
+          name: 'Alco - Gestión Proyectos SGC',
+          short_name: 'Alco QMS',
+          description: 'Sistema de Gestión de Calidad y Proyectos - Alco',
           theme_color: '#0b0b14',
           background_color: '#0b0b14',
           display: 'standalone',
           orientation: 'portrait',
+          start_url: '/Alco-App26/',
           icons: [
             {
               src: 'pwa-192x192.png',
               sizes: '192x192',
-              type: 'image/png'
-            },
-            {
-              src: 'pwa-512x512.png',
-              sizes: '512x512',
-              type: 'image/png'
+              type: 'image/png',
+              purpose: 'any'
             },
             {
               src: 'pwa-512x512.png',
               sizes: '512x512',
               type: 'image/png',
-              purpose: 'any maskable'
+              purpose: 'any'
+            },
+            {
+              src: 'pwa-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable'
             }
           ]
         }
