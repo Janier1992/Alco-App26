@@ -24,7 +24,7 @@ export default defineConfig(({ mode }) => {
           background_color: '#0b0b14',
           display: 'standalone',
           orientation: 'portrait',
-          start_url: '/Alco-App26/',
+          start_url: './',
           icons: [
             {
               src: 'pwa-192x192.png',
