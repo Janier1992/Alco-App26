@@ -1,1 +1,0 @@
-if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/Alco-App26/sw.js', { scope: '/Alco-App26/' })})}
