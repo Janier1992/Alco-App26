@@ -76,7 +76,8 @@ export const useProjectsBoard = (boardType: string = 'projects') => {
                             date: new Date(c.created_at).toLocaleDateString()
                         })) || [],
                         assetId: t.asset_id,
-                        type: t.maintenance_type
+                        type: t.maintenance_type,
+                        column_id: t.column_id
                     });
                 }
             });
@@ -138,7 +139,8 @@ export const useProjectsBoard = (boardType: string = 'projects') => {
                 labels: [],
                 assignedUsers: [],
                 attachments: [],
-                checklist: []
+                checklist: [],
+                column_id: columnId
             };
 
             const newCols = { ...columns };

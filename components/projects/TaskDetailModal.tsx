@@ -339,7 +339,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
                 <CameraModal
                     isOpen={isCameraOpen}
-                    onClose={() => setIsCameraOpen(null)}
+                    onClose={() => setIsCameraOpen(false)}
                     onCapture={handlePhotoCapture}
                 />
             </div>

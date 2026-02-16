@@ -268,6 +268,7 @@ export interface Task {
     checklist?: ChecklistItem[];
     assetId?: string;
     type?: MaintenanceType;
+    column_id?: string;
 }
 
 export interface Column {

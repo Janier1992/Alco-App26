@@ -62,7 +62,7 @@ const Projects: React.FC = () => {
             {/* Header / Breadcrumbs */}
             <div className="p-4 md:p-8 flex justify-between items-center sticky left-0">
                 <Breadcrumbs
-                    items={[{ label: 'OPERACIONES', path: '/ops' }, { label: 'GESTIÓN PROYECTOS', path: '/ops/projects' }]}
+                    crumbs={[{ label: 'OPERACIONES', path: '/ops' }, { label: 'GESTIÓN PROYECTOS', path: '/ops/projects' }]}
                 />
                 <button
                     onClick={() => {
