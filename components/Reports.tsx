@@ -51,10 +51,10 @@ const ReportGenerator: React.FC = () => {
 
             const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY);
             const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
-            prompt = `Actúa como Director de Calidad de Alco Proyectos. Genera un reporte BI para el periodo: ${reportParams.dateRange}. 
+            const prompt = `Actúa como Director de Calidad de Alco Proyectos. Genera un reporte BI para el periodo: ${reportParams.dateRange}. 
             Tipo: ${reportParams.reportType}. Datos: NCs Activas: ${mockContext.ncs}, Calibraciones Vencidas: ${mockContext.calibVenc}, OEE: ${mockContext.oee}%. 
             Análisis específico para el área: ${reportParams.area === 'all' ? 'PLANTA GENERAL' : reportParams.area}.
-            Estructura: 1. Resumen Gerencial, 2. Análisis de Riesgos en Proceso ${mockContext.topProcess}, 3. Tres Recomendaciones de Mejora Continua (CAPA) enfocadas en Calidad ISO 9001. Usa Markdown profesional.`;
+            Estructura: 1. Resumen Gerencial, 2. Análisis de Riesgos en Proceso ${mockContext.topProcess}, 3. Tres Recomendaciones de Mejora Continua (CAPA) enfocadas en Calidad ISO 9001. Usa Markdown profesional. Responde SIEMPRE en Español (ESTRICTAMENTE).`;
 
             const response = await model.generateContent(prompt);
             const text = response.response.text();
@@ -121,7 +121,7 @@ const ReportGenerator: React.FC = () => {
                     <button
                         type="submit"
                         disabled={isGenerating}
-                        className={`w-full py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all shadow-xl flex items-center justify-center gap-3 ${isGenerating ? 'bg-slate-100 text-slate-400' : 'bg-sky-600 text-white hover:scale-105 active:scale-95 shadow-sky-600/20'}`}
+                        className={`w - full py - 4 rounded - 2xl font - black text - [11px] uppercase tracking - widest transition - all shadow - xl flex items - center justify - center gap - 3 ${isGenerating ? 'bg-slate-100 text-slate-400' : 'bg-sky-600 text-white hover:scale-105 active:scale-95 shadow-sky-600/20'} `}
                     >
                         {isGenerating ? <RefreshIcon className="animate-spin" /> : <ChartLineIcon />}
                         {isGenerating ? 'PROCESANDO...' : 'GENERAR REPORTE'}

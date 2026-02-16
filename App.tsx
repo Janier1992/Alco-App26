@@ -2,25 +2,28 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import * as rr from 'react-router-dom';
 const { HashRouter, Routes, Route, Outlet, Navigate, useLocation } = rr;
-import LoginPage from './components/LoginPage';
 import Sidebar from './components/Sidebar';
-import Dashboard from './components/Dashboard';
 import ReloadPrompt from './components/ReloadPrompt';
-import Forms from './components/Forms';
-import Library from './components/Library';
-import Indicators from './components/Indicators';
-import Reports from './components/Reports';
-import Audits from './components/Audits';
-import NonConformities from './components/NonConformities';
-import Metrology from './components/Metrology';
-import MetrologyReplacement from './components/MetrologyReplacement';
-import Calibration from './components/Calibration';
-import AgentHub from './components/AgentHub';
-import Installations from './components/Installations';
-import Projects from './components/Projects';
-import Maintenance from './components/Maintenance';
-import QualityClaims from './components/QualityClaims';
-import AdminSettings from './components/AdminSettings';
+import PageLoader from './components/PageLoader';
+
+// Lazy Load Pages
+const LoginPage = React.lazy(() => import('./components/LoginPage'));
+const Dashboard = React.lazy(() => import('./components/Dashboard'));
+const Forms = React.lazy(() => import('./components/Forms'));
+const Library = React.lazy(() => import('./components/Library'));
+const Indicators = React.lazy(() => import('./components/Indicators'));
+const Reports = React.lazy(() => import('./components/Reports'));
+const Audits = React.lazy(() => import('./components/Audits'));
+const NonConformities = React.lazy(() => import('./components/NonConformities'));
+const Metrology = React.lazy(() => import('./components/Metrology'));
+const MetrologyReplacement = React.lazy(() => import('./components/MetrologyReplacement'));
+const Calibration = React.lazy(() => import('./components/Calibration'));
+const AgentHub = React.lazy(() => import('./components/AgentHub'));
+const Installations = React.lazy(() => import('./components/Installations'));
+const Projects = React.lazy(() => import('./components/Projects'));
+const Maintenance = React.lazy(() => import('./components/Maintenance'));
+const QualityClaims = React.lazy(() => import('./components/QualityClaims'));
+const AdminSettings = React.lazy(() => import('./components/AdminSettings'));
 
 
 import type { User, NavItem } from './types';
@@ -133,31 +136,33 @@ const App: React.FC = () => {
             <NotificationProvider>
                 <AgentProvider>
                     <HashRouter>
-                        <Routes>
-                            <Route
-                                path="/login"
-                                element={user ? <Navigate to="/dashboard" /> : <LoginPage onLogin={handleLogin} />}
-                            />
-                            <Route path="/" element={user ? <MainLayout user={user} onLogout={handleLogout} /> : <Navigate to="/login" />}>
-                                <Route index element={<Navigate to="/dashboard" />} />
-                                <Route path="dashboard" element={<Dashboard user={user!} />} />
-                                <Route path="quality/forms" element={<Forms />} />
-                                <Route path="quality/nc" element={<NonConformities />} />
-                                <Route path="quality/claims" element={<QualityClaims />} />
-                                <Route path="quality/audits" element={<Audits />} />
-                                <Route path="quality/library" element={<Library />} />
-                                <Route path="quality/indicators" element={<Indicators />} />
-                                <Route path="metrology" element={<Metrology />} />
-                                <Route path="metrology/replacement" element={<MetrologyReplacement />} />
-                                <Route path="metrology/calibration" element={<Calibration />} />
-                                <Route path="reports" element={<Reports />} />
-                                <Route path="ops/projects" element={<Projects />} />
-                                <Route path="maintenance/board" element={<Maintenance />} />
+                        <React.Suspense fallback={<PageLoader />}>
+                            <Routes>
+                                <Route
+                                    path="/login"
+                                    element={user ? <Navigate to="/dashboard" /> : <LoginPage onLogin={handleLogin} />}
+                                />
+                                <Route path="/" element={user ? <MainLayout user={user} onLogout={handleLogout} /> : <Navigate to="/login" />}>
+                                    <Route index element={<Navigate to="/dashboard" />} />
+                                    <Route path="dashboard" element={<Dashboard user={user!} />} />
+                                    <Route path="quality/forms" element={<Forms />} />
+                                    <Route path="quality/nc" element={<NonConformities />} />
+                                    <Route path="quality/claims" element={<QualityClaims />} />
+                                    <Route path="quality/audits" element={<Audits />} />
+                                    <Route path="quality/library" element={<Library />} />
+                                    <Route path="quality/indicators" element={<Indicators />} />
+                                    <Route path="metrology" element={<Metrology />} />
+                                    <Route path="metrology/replacement" element={<MetrologyReplacement />} />
+                                    <Route path="metrology/calibration" element={<Calibration />} />
+                                    <Route path="reports" element={<Reports />} />
+                                    <Route path="ops/projects" element={<Projects />} />
+                                    <Route path="maintenance/board" element={<Maintenance />} />
 
-                                <Route path="installations" element={<Installations />} />
-                                <Route path="settings" element={<AdminSettings />} />
-                            </Route>
-                        </Routes>
+                                    <Route path="installations" element={<Installations />} />
+                                    <Route path="settings" element={<AdminSettings />} />
+                                </Route>
+                            </Routes>
+                        </React.Suspense>
                     </HashRouter>
                 </AgentProvider>
             </NotificationProvider>

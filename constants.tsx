@@ -58,6 +58,7 @@ export const GoogleIcon: React.FC<{ className?: string }> = ({ className }) => <
 export const MapIcon: React.FC<{ className?: string }> = ({ className }) => <i className={`fas fa-map-marked-alt w-5 h-5 ${className || ''}`}></i>;
 export const ImageIcon: React.FC<{ className?: string }> = ({ className }) => <i className={`fas fa-image w-5 h-5 ${className || ''}`}></i>;
 export const BrainIcon: React.FC<{ className?: string }> = ({ className }) => <i className={`fas fa-brain w-5 h-5 ${className || ''}`}></i>;
+export const ChevronLeftIcon: React.FC<{ className?: string }> = ({ className }) => <i className={`fas fa-chevron-left w-5 h-5 ${className || ''}`}></i>;
 export const ChevronRightIcon: React.FC<{ className?: string }> = ({ className }) => <i className={`fas fa-chevron-right w-5 h-5 ${className || ''}`}></i>;
 export const MovieIcon: React.FC<{ className?: string }> = ({ className }) => <i className={`fas fa-film w-5 h-5 ${className || ''}`}></i>;
 export const MagicIcon: React.FC<{ className?: string }> = ({ className }) => <i className={`fas fa-sparkles w-5 h-5 ${className || ''}`}></i>;
@@ -84,7 +85,7 @@ export const NAV_ITEMS: NavItem[] = [
             { id: 'forms', label: 'Inspecciones en Campo', path: '/quality/forms', icon: ClipboardListIcon },
             { id: 'nc', label: 'No Conformidades y CAPA', path: '/quality/nc', icon: ExclamationTriangleIcon },
             { id: 'claims', label: 'Gestión de Reclamos', path: '/quality/claims', icon: UserShieldIcon },
-            { id: 'audits', label: 'Auditorías IA (ISO 19011)', path: '/quality/audits', icon: RobotIcon },
+            { id: 'audits', label: 'Auditorías ISO 9001', path: '/quality/audits', icon: RobotIcon },
         ],
     },
     {

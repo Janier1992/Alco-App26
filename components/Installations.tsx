@@ -35,7 +35,7 @@ const Installations: React.FC = () => {
             const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY);
             const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
             const prompt = `Actúa como Experto en Instalaciones Alco. Pregunta: "${aiQuery}". 
-            Responde de forma técnica citando NSR-10 o estándares de estanqueidad si aplica. Sé breve.`;
+            Responde de forma técnica citando NSR-10 o estándares de estanqueidad si aplica. Sé breve. Responde SIEMPRE en Español.`;
             const response = await model.generateContent(prompt);
 
             // Simulamos respuesta en modal o alerta por ahora

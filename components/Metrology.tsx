@@ -7,18 +7,15 @@ import {
 } from '../constants';
 import { useNotification } from './NotificationSystem';
 import type { MetrologyRecord, MetrologyItem } from '../types';
+import { insforge, supabase } from '../insforgeClient';
 
 const Metrology: React.FC = () => {
     const { addNotification } = useNotification();
     const [isFormOpen, setIsFormOpen] = useState(false);
-    const [records, setRecords] = useState<MetrologyRecord[]>(() => {
-        const saved = localStorage.getItem('alco_metrology_v3');
-        return saved ? JSON.parse(saved) : [];
-    });
+    const [records, setRecords] = useState<MetrologyRecord[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [editingId, setEditingId] = useState<string | null>(null);
-
-    // Estado inicial del formulario
 
     // Estado inicial del formulario
     const INITIAL_ITEM: MetrologyItem = {
@@ -28,17 +25,20 @@ const Metrology: React.FC = () => {
         observaciones: ''
     };
 
-    const INITIAL_DATA = {
+    const INITIAL_DATA: MetrologyRecord = {
+        id: '',
         fecha: new Date().toISOString().split('T')[0],
         area: 'CALIDAD',
         sede: '',
         receptorNombre: '',
         receptorCedula: '',
         receptorCargo: '',
+        firmaEntrega: '',
+        firmaRecibe: '',
         items: [INITIAL_ITEM]
     };
 
-    const [formData, setFormData] = useState<Omit<MetrologyRecord, 'id' | 'firmaEntrega' | 'firmaRecibe'>>(INITIAL_DATA);
+    const [formData, setFormData] = useState<MetrologyRecord>(INITIAL_DATA as MetrologyRecord);
 
     // Refs para Firmas
     const canvasEntregaRef = useRef<HTMLCanvasElement>(null);
@@ -46,9 +46,63 @@ const Metrology: React.FC = () => {
     const [isDrawingEntrega, setIsDrawingEntrega] = useState(false);
     const [isDrawingRecibe, setIsDrawingRecibe] = useState(false);
 
+    // Fetch records from Insforge
+    const fetchRecords = async () => {
+        setIsLoading(true);
+        try {
+            const { data, error } = await supabase.from('metrology_records').select('*').order('created_at', { ascending: false });
+            if (error) throw error;
+
+            // Map DB fields to component state
+            const mappedRecords: MetrologyRecord[] = (data || []).map((r: any) => ({
+                id: r.id,
+                fecha: r.date,
+                area: r.area,
+                sede: r.sede || '',
+                receptorNombre: r.receptor_nombre || '',
+                receptorCedula: r.receptor_cedula || '',
+                receptorCargo: r.receptor_cargo || '',
+                firmaEntrega: r.firma_entrega_url || '',
+                firmaRecibe: r.firma_recibe_url || '',
+                items: r.items || []
+            }));
+
+            setRecords(mappedRecords);
+        } catch (error: any) {
+            console.error('Error fetching metrology records:', error);
+            addNotification({ type: 'error', title: 'ERROR DE CARGA', message: 'No se pudieron recuperar las actas de metrología.' });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     useEffect(() => {
-        localStorage.setItem('alco_metrology_v3', JSON.stringify(records));
-    }, [records]);
+        fetchRecords();
+    }, []);
+
+    // Helper to upload base64 signature to Insforge Storage
+    const uploadSignature = async (base64: string, prefix: string) => {
+        if (!base64 || base64.length < 100) return ''; // Skip if empty canvas
+
+        try {
+            const fileName = `${prefix}_${Date.now()}.png`;
+            const blob = await (await fetch(base64)).blob();
+
+            const { error } = await (supabase.storage
+                .from('signatures') as any)
+                .upload(fileName, blob, { contentType: 'image/png' });
+
+            if (error) throw error;
+
+            // fileName is used instead of data.path if only file name is needed, but bucket.getPublicUrl usually works with path
+            const publicUrlData = (supabase.storage.from('signatures') as any).getPublicUrl(fileName);
+            return publicUrlData.data?.publicUrl || publicUrlData;
+            return publicUrlData.publicUrl;
+        } catch (error) {
+            console.error('Error uploading signature:', error);
+            return '';
+        }
+    };
 
     // Gestión de Items
     const handleAddItem = () => {
@@ -121,49 +175,90 @@ const Metrology: React.FC = () => {
         setEditingId(id);
         setIsFormOpen(true);
 
-        // Cargar firmas existentes
+        // Cargar firmas existentes (visual only, won't re-upload unless cleared/changed)
         setTimeout(() => {
             const loadSig = (url: string, ref: React.RefObject<HTMLCanvasElement>) => {
+                if (!url) return;
                 const ctx = ref.current?.getContext('2d');
                 const img = new Image();
+                img.crossOrigin = "anonymous";
                 img.onload = () => ctx?.drawImage(img, 0, 0);
                 img.src = url;
             };
             if (firmaEntrega) loadSig(firmaEntrega, canvasEntregaRef);
             if (firmaRecibe) loadSig(firmaRecibe, canvasRecibeRef);
-        }, 100);
+        }, 300);
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = async (id: string) => {
         if (confirm('¿Eliminar esta acta de entrega?')) {
-            setRecords(prev => prev.filter(r => r.id !== id));
-            addNotification({ type: 'error', title: 'ACTA ELIMINADA', message: 'Registro eliminado del libro maestro.' });
+            try {
+                const { error } = await supabase.from('metrology_records').delete().eq('id', id);
+                if (error) throw error;
+
+                setRecords(prev => prev.filter(r => r.id !== id));
+                addNotification({ type: 'error', title: 'ACTA ELIMINADA', message: 'Registro eliminado de la base de datos.' });
+            } catch (error) {
+                console.error('Error deleting record:', error);
+                addNotification({ type: 'error', title: 'ERROR', message: 'No se pudo eliminar el registro.' });
+            }
         }
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const firmaEntrega = canvasEntregaRef.current?.toDataURL() || '';
-        const firmaRecibe = canvasRecibeRef.current?.toDataURL() || '';
 
-        const recordHeader = editingId ? { id: editingId } : { id: `ACTA-${Date.now()}` };
+        try {
+            addNotification({ type: 'info', title: 'PROCESANDO...', message: 'Guardando registro y firmas...' });
 
-        const newRecord: MetrologyRecord = {
-            ...recordHeader,
-            firmaEntrega,
-            firmaRecibe,
-            ...formData
-        } as MetrologyRecord;
+            const firmaEntregaUrl = canvasEntregaRef.current?.toDataURL() || '';
+            const firmaRecibeUrl = canvasRecibeRef.current?.toDataURL() || '';
 
-        if (editingId) {
-            setRecords(prev => prev.map(r => r.id === editingId ? newRecord : r));
-            addNotification({ type: 'success', title: 'REGISTRO ACTUALIZADO', message: `Acta de ${formData.receptorNombre} actualizada.` });
-        } else {
-            setRecords([newRecord, ...records]);
-            addNotification({ type: 'success', title: 'ACTA GENERADA', message: `Asignación a ${formData.receptorNombre} registrada correctamente.` });
+            // Handle signature uploads (only if dataURL, skip if already a publicUrl from editing)
+            let firmaEntrega = formData.firmaEntrega || '';
+            let firmaRecibe = formData.firmaRecibe || '';
+
+            if (firmaEntregaUrl.startsWith('data:')) {
+                firmaEntrega = await uploadSignature(firmaEntregaUrl, 'entregado');
+            }
+            if (firmaRecibeUrl.startsWith('data:')) {
+                firmaRecibe = await uploadSignature(firmaRecibeUrl, 'recibido');
+            }
+
+            const dbPayload = {
+                date: formData.fecha,
+                operator: formData.receptorNombre, // Used as main reference in old schema
+                area: formData.area,
+                sede: formData.sede,
+                receptor_nombre: formData.receptorNombre,
+                receptor_cedula: formData.receptorCedula,
+                receptor_cargo: formData.receptorCargo,
+                firma_entrega_url: firmaEntrega,
+                firma_recibe_url: firmaRecibe,
+                items: formData.items
+            };
+
+            let result;
+            if (editingId) {
+                result = await supabase.from('metrology_records').update(dbPayload).eq('id', editingId);
+            } else {
+                result = await supabase.from('metrology_records').insert([dbPayload]);
+            }
+
+            if (result.error) throw result.error;
+
+            addNotification({
+                type: 'success',
+                title: editingId ? 'REGISTRO ACTUALIZADO' : 'ACTA GENERADA',
+                message: `Asignación a ${formData.receptorNombre} guardada correctamente.`
+            });
+
+            fetchRecords();
+            resetForm();
+        } catch (error: any) {
+            console.error('Error saving metrology record:', error);
+            addNotification({ type: 'error', title: 'ERROR AL GUARDAR', message: error.message });
         }
-
-        resetForm();
     };
 
     const inputStyles = "w-full p-3 bg-slate-50 dark:bg-[#1a1a24] border border-slate-200 dark:border-white/5 rounded-lg text-xs font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-[#5d5fef] outline-none transition-all uppercase placeholder:text-slate-400";
@@ -300,7 +395,9 @@ const Metrology: React.FC = () => {
                             <tr><th className="px-8 py-6">Fecha / ID</th><th className="px-6 py-6">Receptor</th><th className="px-6 py-6">Items Asignados</th><th className="px-6 py-6 text-center">Firmas</th><th className="px-8 py-6 text-right">Gestión</th></tr>
                         </thead>
                         <tbody className="divide-y dark:divide-white/5">
-                            {records.filter(r => r.receptorNombre.toLowerCase().includes(searchTerm.toLowerCase())).map(r => (
+                            {isLoading ? (
+                                <tr><td colSpan={6} className="px-8 py-12 text-center text-slate-400 text-xs font-bold uppercase animate-pulse">Cargando actas...</td></tr>
+                            ) : records.filter(r => r.receptorNombre.toLowerCase().includes(searchTerm.toLowerCase())).map(r => (
                                 <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
                                     <td className="px-8 py-6 font-mono text-xs font-bold"><p className="text-slate-400 mb-1">{r.fecha}</p><span className="text-sky-600 uppercase bg-sky-50 dark:bg-sky-900/30 px-2 py-0.5 rounded">{r.id}</span></td>
                                     <td className="px-6 py-6">
@@ -326,7 +423,7 @@ const Metrology: React.FC = () => {
                                     </td>
                                 </tr>
                             ))}
-                            {records.length === 0 && <tr><td colSpan={6} className="px-8 py-12 text-center text-slate-400 text-xs font-bold uppercase opacity-50">No hay actas registradas</td></tr>}
+                            {!isLoading && records.length === 0 && <tr><td colSpan={6} className="px-8 py-12 text-center text-slate-400 text-xs font-bold uppercase opacity-50">No hay actas registradas</td></tr>}
                         </tbody>
                     </table>
                 </div>

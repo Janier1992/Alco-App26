@@ -145,24 +145,6 @@ const AgentHub: React.FC = () => {
     const [voiceStatus, setVoiceStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
     const wsRef = useRef<WebSocket | null>(null); // For manual WebSocket
 
-    // DEBUG: List Models on Mount
-    useEffect(() => {
-        const checkModels = async () => {
-            if (!API_KEY) return;
-            try {
-                // Attempt to force v1alpha if the SDK supports 'version' or 'apiVersion' in config
-                // If not, it will just ignore it.
-                // @ts-ignore
-                const ai = new GoogleGenerativeAI(API_KEY);
-                // @ts-ignore
-                const models = await ai.listModels();
-                console.log("🤖 AVAILABLE MODELS:", models);
-            } catch (e) {
-                console.error("DEBUG: Could not list models:", e);
-            }
-        };
-        checkModels();
-    }, []);
 
     useEffect(() => {
         if (isAgentOpen) {

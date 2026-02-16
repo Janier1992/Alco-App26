@@ -114,7 +114,7 @@ const OperationalIntelligence: React.FC = () => {
             const prompt = `Actúa como Supervisor Senior de Calidad. Tengo un Score de Cumplimiento de ${score}/100.
             Tareas pendientes críticas: ${pendingParams}.
             Genera 3 recomendaciones operativas tácticas (muy breves y directas) para mejorar el turno.
-            Usa formato Markdown con viñetas.`;
+            Usa formato Markdown con viñetas. Responde SIEMPRE en Español. Responde SIEMPRE en Español.`;
 
             const response = await model.generateContent(prompt);
             setAiRecommendations(response.response.text());

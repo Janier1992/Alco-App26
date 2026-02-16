@@ -49,7 +49,7 @@ export type DocumentStatus = 'Borrador' | 'En Revisión' | 'Aprobado' | 'Obsolet
 export type DocumentCategory = 'Manuales' | 'Instructivos' | 'Planos' | 'Fichas Técnicas' | 'Registros';
 
 export interface Document {
-    id: number;
+    id: string;
     name: string;
     code: string;
     category: DocumentCategory;
@@ -77,6 +77,7 @@ export interface FiveWhys {
     why5: string;
     rootCause: string;
     aiSuggestedRootCause?: string;
+    evidence_urls?: string[];
 }
 
 export interface CAPAAction {
@@ -85,6 +86,7 @@ export interface CAPAAction {
     responsible: string;
     dueDate: string;
     completed: boolean;
+    type: 'Correctiva' | 'Preventiva' | 'Mejora';
 }
 
 export interface NonConformity {

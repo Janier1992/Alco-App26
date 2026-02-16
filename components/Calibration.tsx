@@ -1,9 +1,9 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import Breadcrumbs from './Breadcrumbs';
-import { 
-    RulerIcon, CheckCircleIcon, ExclamationTriangleIcon, SearchIcon, 
-    RefreshIcon, PlusIcon, SaveIcon, EditIcon, DeleteIcon, DownloadIcon 
+import {
+    RulerIcon, CheckCircleIcon, ExclamationTriangleIcon, SearchIcon,
+    RefreshIcon, PlusIcon, SaveIcon, EditIcon, DeleteIcon, DownloadIcon
 } from '../constants';
 import { useNotification } from './NotificationSystem';
 
@@ -17,22 +17,45 @@ interface CalibrationRecord {
     certificateNumber: string;
 }
 
+import { insforge, supabase } from '../insforgeClient';
+
 const Calibration: React.FC = () => {
     const { addNotification } = useNotification();
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
 
-    const [records, setRecords] = useState<CalibrationRecord[]>(() => {
-        const saved = localStorage.getItem('alco_calibration_v2');
-        return saved ? JSON.parse(saved) : [
-            { id: '1', tool: 'Calibrador Digital Mitutoyo 150mm', code: 'MET-042', lastDate: '2023-08-15', dueDate: '2024-08-15', status: 'Vigente', certificateNumber: '88219' }
-        ];
-    });
+    const [records, setRecords] = useState<CalibrationRecord[]>([]);
+
+    const fetchRecords = async () => {
+        setIsLoading(true);
+        try {
+            const { data, error } = await supabase.from('metrology_calibration').select('*').order('due_date', { ascending: true });
+            if (error) throw error;
+
+            const mappedRecords: CalibrationRecord[] = (data || []).map((r: any) => ({
+                id: r.id,
+                tool: r.tool_name,
+                code: r.tool_code,
+                lastDate: r.last_date,
+                dueDate: r.due_date,
+                status: r.status,
+                certificateNumber: r.certificate_number
+            }));
+
+            setRecords(mappedRecords);
+        } catch (error: any) {
+            console.error('Error fetching calibration records:', error);
+            addNotification({ type: 'error', title: 'ERROR DE CARGA', message: 'No se pudo recuperar la programación de calibración.' });
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     useEffect(() => {
-        localStorage.setItem('alco_calibration_v2', JSON.stringify(records));
-    }, [records]);
+        fetchRecords();
+    }, []);
 
     const [formData, setFormData] = useState<Omit<CalibrationRecord, 'id'>>({
         tool: '', code: '', lastDate: '', dueDate: '', status: 'Vigente', certificateNumber: ''
@@ -40,34 +63,58 @@ const Calibration: React.FC = () => {
 
     const handleEdit = (record: CalibrationRecord) => {
         setEditingId(record.id);
-        setFormData({ ...record });
+        const { id, ...data } = record;
+        setFormData(data);
         setIsFormOpen(true);
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = async (id: string) => {
         if (confirm('¿Eliminar permanentemente este registro de calibración?')) {
-            setRecords(prev => prev.filter(r => r.id !== id));
-            addNotification({ type: 'error', title: 'EQUIPO ELIMINADO', message: 'El instrumento ha sido removido del cronograma oficial.' });
+            try {
+                const { error } = await supabase.from('metrology_calibration').delete().eq('id', id);
+                if (error) throw error;
+                setRecords(prev => prev.filter(r => r.id !== id));
+                addNotification({ type: 'error', title: 'EQUIPO ELIMINADO', message: 'El instrumento ha sido removido del cronograma oficial.' });
+            } catch (error) {
+                addNotification({ type: 'error', title: 'ERROR', message: 'No se pudo eliminar el equipo.' });
+            }
         }
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (editingId) {
-            setRecords(prev => prev.map(r => r.id === editingId ? { ...formData, id: editingId } : r));
-            addNotification({ type: 'success', title: 'REGISTRO ACTUALIZADO', message: 'Información técnica corregida.' });
-        } else {
-            const newRecord: CalibrationRecord = { ...formData, id: Date.now().toString() };
-            setRecords(prev => [newRecord, ...prev]);
-            addNotification({ type: 'success', title: 'EQUIPO REGISTRADO', message: 'Nuevo instrumento incorporado al control SGC.' });
+        try {
+            const dbPayload = {
+                tool_name: formData.tool,
+                tool_code: formData.code,
+                last_date: formData.lastDate,
+                due_date: formData.dueDate,
+                status: formData.status,
+                certificate_number: formData.certificateNumber
+            };
+
+            let result;
+            if (editingId) {
+                result = await supabase.from('metrology_calibration').update(dbPayload).eq('id', editingId);
+            } else {
+                result = await supabase.from('metrology_calibration').insert([dbPayload]);
+            }
+
+            if (result.error) throw result.error;
+
+            addNotification({ type: 'success', title: editingId ? 'REGISTRO ACTUALIZADO' : 'EQUIPO REGISTRADO', message: editingId ? 'Información técnica corregida.' : 'Nuevo instrumento incorporado al control SGC.' });
+            fetchRecords();
+            setIsFormOpen(false);
+            setEditingId(null);
+            setFormData({ tool: '', code: '', lastDate: '', dueDate: '', status: 'Vigente', certificateNumber: '' });
+        } catch (error: any) {
+            console.error('Error saving calibration:', error);
+            addNotification({ type: 'error', title: 'ERROR', message: error.message });
         }
-        setIsFormOpen(false);
-        setEditingId(null);
-        setFormData({ tool: '', code: '', lastDate: '', dueDate: '', status: 'Vigente', certificateNumber: '' });
     };
 
-    const filteredRecords = records.filter(r => 
-        r.tool.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const filteredRecords = records.filter(r =>
+        r.tool.toLowerCase().includes(searchTerm.toLowerCase()) ||
         r.code.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
@@ -76,7 +123,7 @@ const Calibration: React.FC = () => {
     return (
         <div className="animate-fade-in space-y-8 pb-20">
             <Breadcrumbs crumbs={[{ label: 'METROLOGÍA', path: '/metrology' }, { label: 'CALIBRACIÓN' }]} />
-            
+
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-4xl font-black text-slate-800 dark:text-white uppercase tracking-tighter">Control de <span className="text-sky-600">Calibración</span></h1>
@@ -91,11 +138,12 @@ const Calibration: React.FC = () => {
                 <div className="bg-white dark:bg-slate-900 p-10 rounded-[3rem] shadow-2xl animate-fade-in-up border border-sky-500/20">
                     <form onSubmit={handleSubmit} className="space-y-8">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            <div className="lg:col-span-2"><label className="text-[10px] font-black uppercase text-slate-400 mb-2 block ml-1">Nombre Técnico del Instrumento</label><input required value={formData.tool} onChange={e => setFormData({...formData, tool: e.target.value})} className={inputStyles} placeholder="Ej: Calibrador Digital Mitutoyo" /></div>
-                            <div><label className="text-[10px] font-black uppercase text-slate-400 mb-2 block ml-1">Código Interno</label><input required value={formData.code} onChange={e => setFormData({...formData, code: e.target.value})} className={inputStyles} placeholder="Ej: MET-088" /></div>
-                            <div><label className="text-[10px] font-black uppercase text-slate-400 mb-2 block ml-1">Última Intervención</label><input type="date" value={formData.lastDate} onChange={e => setFormData({...formData, lastDate: e.target.value})} className={inputStyles} /></div>
-                            <div><label className="text-[10px] font-black uppercase text-slate-400 mb-2 block ml-1">Vencimiento del Certificado</label><input type="date" value={formData.dueDate} onChange={e => setFormData({...formData, dueDate: e.target.value})} className={inputStyles} /></div>
-                            <div><label className="text-[10px] font-black uppercase text-slate-400 mb-2 block ml-1">Estado de Vigencia</label><select value={formData.status} onChange={e => setFormData({...formData, status: e.target.value as any})} className={inputStyles}><option>Vigente</option><option>Vencido</option><option>Próximo</option><option>Mantenimiento</option></select></div>
+                            <div className="lg:col-span-2"><label className="text-[10px] font-black uppercase text-slate-400 mb-2 block ml-1">Nombre Técnico del Instrumento</label><input required value={formData.tool} onChange={e => setFormData({ ...formData, tool: e.target.value })} className={inputStyles} placeholder="Ej: Calibrador Digital Mitutoyo" /></div>
+                            <div><label className="text-[10px] font-black uppercase text-slate-400 mb-2 block ml-1">Código Interno</label><input required value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} className={inputStyles} placeholder="Ej: MET-088" /></div>
+                            <div><label className="text-[10px] font-black uppercase text-slate-400 mb-2 block ml-1">Última Intervención</label><input type="date" value={formData.lastDate} onChange={e => setFormData({ ...formData, lastDate: e.target.value })} className={inputStyles} /></div>
+                            <div><label className="text-[10px] font-black uppercase text-slate-400 mb-2 block ml-1">Vencimiento del Certificado</label><input type="date" value={formData.dueDate} onChange={e => setFormData({ ...formData, dueDate: e.target.value })} className={inputStyles} /></div>
+                            <div><label className="text-[10px] font-black uppercase text-slate-400 mb-2 block ml-1">Número de Certificado</label><input required value={formData.certificateNumber} onChange={e => setFormData({ ...formData, certificateNumber: e.target.value })} className={inputStyles} placeholder="Ej: 88219" /></div>
+                            <div><label className="text-[10px] font-black uppercase text-slate-400 mb-2 block ml-1">Estado de Vigencia</label><select value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value as any })} className={inputStyles}><option>Vigente</option><option>Vencido</option><option>Próximo</option><option>Mantenimiento</option></select></div>
                         </div>
                         <button type="submit" className="w-full py-5 bg-sky-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl shadow-sky-600/20 active:scale-95 transition-all"><SaveIcon /> {editingId ? 'Actualizar Ficha Técnica' : 'Incorporar al Cronograma Maestro'}</button>
                     </form>
@@ -110,16 +158,18 @@ const Calibration: React.FC = () => {
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead className="text-[10px] font-black uppercase text-slate-400 bg-slate-50/50 dark:bg-slate-900/50">
-                            <tr><th className="px-8 py-6">Instrumento / Modelo</th><th className="px-4 py-6">Código Alco</th><th className="px-4 py-6">Vencimiento</th><th className="px-4 py-6 text-center">Estatus ISO</th><th className="px-8 py-6 text-right">Gestión</th></tr>
+                            <tr><th className="px-8 py-6">Instrumento / Modelo</th><th className="px-4 py-6">Código Alco</th><th className="px-4 py-6">Certificado</th><th className="px-4 py-6 text-center">Estatus ISO</th><th className="px-8 py-6 text-right">Gestión</th></tr>
                         </thead>
                         <tbody className="divide-y dark:divide-slate-700">
-                            {filteredRecords.length === 0 ? (
+                            {isLoading ? (
+                                <tr><td colSpan={5} className="px-8 py-20 text-center text-xs font-black uppercase animate-pulse">Consultando base de datos oficial...</td></tr>
+                            ) : filteredRecords.length === 0 ? (
                                 <tr><td colSpan={5} className="px-8 py-20 text-center opacity-30 text-xs font-black uppercase">Sin equipos registrados en el sistema de metrología</td></tr>
                             ) : filteredRecords.map(item => (
                                 <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-all group">
                                     <td className="px-8 py-6 font-black text-xs uppercase text-slate-700 dark:text-slate-100">{item.tool}</td>
                                     <td className="px-4 py-6 font-mono text-xs text-sky-600 font-bold bg-sky-50 dark:bg-sky-900/20">{item.code}</td>
-                                    <td className="px-4 py-6 text-xs font-bold text-slate-500">{item.dueDate}</td>
+                                    <td className="px-4 py-6 text-xs font-bold text-slate-500">#{item.certificateNumber}</td>
                                     <td className="px-4 py-6 text-center">
                                         <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${item.status === 'Vigente' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{item.status}</span>
                                     </td>

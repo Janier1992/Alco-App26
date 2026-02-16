@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import Breadcrumbs from './Breadcrumbs';
 import {
     RobotIcon, SearchIcon, CalendarIcon, BookIcon, CheckCircleIcon,
@@ -255,7 +255,7 @@ const Audits: React.FC = () => {
         try {
             const { generateContent } = await import('../utils/aiService');
 
-            const prompt = `Actúa como Auditor Líder ISO 9001. Genera un "Resumen Ejecutivo de Auditoría" profesional para el proceso "${selectedAudit.process}". Hallazgos detectados: ${JSON.stringify(selectedAudit.findings)}. El tono debe ser formal, destacando la madurez del sistema y áreas de mejora. Máximo 150 palabras en formato Markdown. Responde SIEMPRE en Español.`;
+            const prompt = `Actúa como Auditor Líder ISO 9001. Genera un "Resumen Ejecutivo de Auditoría" profesional para el proceso "${selectedAudit.process}". Hallazgos detectados: ${JSON.stringify(selectedAudit.findings)}. El tono debe ser formal, destacando la madurez del sistema y áreas de mejora. Máximo 150 palabras en formato Markdown. Responde SIEMPRE en Español. Asegúrate de que todos los valores del JSON estén en español.`;
 
             try {
                 const summary = await generateContent("gemini-1.5-flash-001", prompt);

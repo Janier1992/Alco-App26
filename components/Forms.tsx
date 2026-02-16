@@ -9,7 +9,7 @@ import {
     ACCION_CORRECTIVA_OPTIONS, DISENO_REFERENCIA_OPTIONS, OPERARIO_RESPONSABLES,
     OBSERVACIONES_SUGERIDAS,
     EditIcon, DeleteIcon, CameraIcon, FileExcelIcon, PlusIcon, LinkIcon, RefreshIcon,
-    RobotIcon, ClipboardListIcon, TrashIcon, ChevronRightIcon, SearchIcon, MicrophoneIcon, SparklesIcon,
+    RobotIcon, ClipboardListIcon, TrashIcon, ChevronLeftIcon, ChevronRightIcon, SearchIcon, MicrophoneIcon, SparklesIcon,
     SaveIcon, GlobeIcon, XCircleIcon
 } from '../constants';
 import { useNotification } from './NotificationSystem';
@@ -29,9 +29,9 @@ const SearchableSelect: React.FC<{
     const [searchTerm, setSearchTerm] = useState('');
     const wrapperRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => { if (!isOpen) setSearchTerm(value); }, [value, isOpen]);
+    useEffect(() => { if (!isOpen) setSearchTerm(value || ''); }, [value, isOpen]);
 
-    const filteredOptions = useMemo(() => options.filter(opt => opt.toLowerCase().includes(searchTerm.toLowerCase())), [options, searchTerm]);
+    const filteredOptions = useMemo(() => options.filter(opt => opt.toLowerCase().includes((searchTerm || '').toLowerCase())), [options, searchTerm]);
     const showAddOption = searchTerm.trim() !== '' && !options.some(opt => opt.toLowerCase() === searchTerm.toLowerCase());
 
     useEffect(() => {
@@ -113,11 +113,44 @@ const Forms: React.FC = () => {
     const [globalSearch, setGlobalSearch] = useState('');
     const [filterId, setFilterId] = useState<string | null>(null); // New state for deep link filtering
     const [sortConfig, setSortConfig] = useState<{ key: string | null; direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' });
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 50;
     const [columnFilters, setColumnFilters] = useState({
         fecha: '', op: '', areaProceso: '', planoOpc: '', disenoReferencia: '',
         cantTotal: '', cantRetenida: '', estado: '', defecto: '', reviso: '',
         responsable: '', accionCorrectiva: '', observacion: ''
     });
+
+    // --- Column Resizing Logic ---
+    const [columnWidths, setColumnWidths] = useState<{ [key: string]: number }>({
+        checkbox: 50,
+        fecha: 120, areaProceso: 150, op: 100, planoOpc: 100, disenoReferencia: 150,
+        cantTotal: 100, cantRetenida: 100, estado: 120, defecto: 120, reviso: 150,
+        responsable: 150, accionCorrectiva: 150, observacion: 250, actions: 100
+    });
+    const resizingRef = useRef<{ column: string, startX: number, startWidth: number } | null>(null);
+
+    const handleResizeStart = (column: string, e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const startWidth = columnWidths[column] || 100;
+        resizingRef.current = { column, startX: e.clientX, startWidth };
+        document.addEventListener('mousemove', handleResizeMove);
+        document.addEventListener('mouseup', handleResizeEnd);
+    };
+
+    const handleResizeMove = (e: MouseEvent) => {
+        if (!resizingRef.current) return;
+        const { column, startX, startWidth } = resizingRef.current;
+        const diff = e.clientX - startX;
+        setColumnWidths(prev => ({ ...prev, [column]: Math.max(50, startWidth + diff) }));
+    };
+
+    const handleResizeEnd = () => {
+        resizingRef.current = null;
+        document.removeEventListener('mousemove', handleResizeMove);
+        document.removeEventListener('mouseup', handleResizeEnd);
+    };
 
     const handleSort = (key: string) => {
         setSortConfig(prev => ({
@@ -165,6 +198,17 @@ const Forms: React.FC = () => {
         return result;
     }, [submissions, columnFilters, globalSearch, sortConfig, filterId]);
 
+    const paginatedSubmissions = useMemo(() => {
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        return filteredSubmissions.slice(startIndex, startIndex + itemsPerPage);
+    }, [filteredSubmissions, currentPage, itemsPerPage]);
+
+    const totalPages = Math.ceil(filteredSubmissions.length / itemsPerPage);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [globalSearch, columnFilters, filterId]);
+
     const location = useLocation();
 
     useEffect(() => {
@@ -197,20 +241,20 @@ const Forms: React.FC = () => {
 
             const mappedData: InspectionData[] = (data || []).map(item => ({
                 id: item.id,
-                fecha: item.fecha,
-                areaProceso: item.area_proceso,
-                op: item.op,
-                planoOpc: item.plano_opc,
-                disenoReferencia: item.diseno_referencia,
-                cantTotal: item.cant_total,
-                cantRetenida: item.cant_retenida,
-                estado: item.estado,
-                defecto: item.defecto,
-                reviso: item.reviso,
-                responsable: item.responsable,
-                accionCorrectiva: item.accion_correctiva,
-                observacionSugerida: item.observacion_sugerida,
-                observacion: item.observacion,
+                fecha: item.fecha || new Date().toISOString().split('T')[0],
+                areaProceso: item.area_proceso || '',
+                op: item.op || '',
+                planoOpc: item.plano_opc || '',
+                disenoReferencia: item.diseno_referencia || '',
+                cantTotal: item.cant_total || 0,
+                cantRetenida: item.cant_retenida || 0,
+                estado: item.estado || 'Aprobado',
+                defecto: item.defecto || 'NINGUNO',
+                reviso: item.reviso || '',
+                responsable: item.responsable || '',
+                accionCorrectiva: item.accion_correctiva || '',
+                observacionSugerida: item.observacion_sugerida || '',
+                observacion: item.observacion || '',
                 photo: item.photo_url || ''
             }));
 
@@ -331,7 +375,7 @@ const Forms: React.FC = () => {
                     "observacion": string (descripción técnica breve y profesional del hallazgo en ESPAÑOL)
                 }
                 Si no se detecta defecto, el defecto es "NINGUNO".
-                Asegúrate de que el campo "observacion" esté siempre en ESPAÑOL.
+                Asegúrate de que el campo "observacion" esté SIEMPRE en ESPAÑOL. Responde SIEMPRE en Español.
             `;
 
             const result = await model.generateContent([
@@ -852,13 +896,13 @@ const Forms: React.FC = () => {
                                 </button>
                             )}
                             <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 rounded-xl shadow-inner border dark:border-white/5 flex-grow md:flex-initial">
-                                <SearchIcon />
                                 <input
-                                    className="bg-transparent border-none outline-none text-xs font-bold uppercase w-full md:w-48"
+                                    className="bg-transparent border-none outline-none text-xs font-bold uppercase w-full md:w-48 placeholder:text-slate-400"
                                     placeholder="BUSCAR..."
                                     value={globalSearch}
                                     onChange={(e) => setGlobalSearch(e.target.value)}
                                 />
+                                <SearchIcon className="text-slate-400 cursor-pointer hover:text-sky-600 transition-colors" onClick={() => { }} />
                             </div>
                         </div>
                     </div>
@@ -870,9 +914,9 @@ const Forms: React.FC = () => {
                                 <RefreshIcon className="animate-spin text-[#5d5fef]" />
                                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Consultando registros...</p>
                             </div>
-                        ) : submissions.length === 0 ? (
-                            <div className="text-center py-12 opacity-30 text-xs font-black uppercase tracking-[0.3em]">Base de datos vacía</div>
-                        ) : submissions.map(sub => (
+                        ) : paginatedSubmissions.length === 0 ? (
+                            <div className="text-center py-12 opacity-30 text-xs font-black uppercase tracking-[0.3em]">No se encontraron resultados</div>
+                        ) : paginatedSubmissions.map(sub => (
                             <div key={sub.id} className="bg-slate-50 dark:bg-white/5 p-6 rounded-2xl border dark:border-white/5 space-y-4">
                                 <div className="flex justify-between items-center">
                                     <div className="flex items-center gap-3">
@@ -884,7 +928,11 @@ const Forms: React.FC = () => {
                                         />
                                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{sub.fecha}</span>
                                     </div>
-                                    <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase border ${sub.estado === 'Aprobado' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : sub.estado === 'Rechazado' ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                                    <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase border ${(sub.estado || '').toUpperCase() === 'APROBADO' ? 'bg-emerald-400 text-black border-emerald-500' :
+                                        (sub.estado || '').toUpperCase() === 'REPROCESAR' ? 'bg-red-600 text-white border-red-700' :
+                                            (sub.estado || '').toUpperCase() === 'RECHAZADO' ? 'bg-rose-100 text-rose-800 border-rose-200' :
+                                                'bg-amber-50 text-amber-700 border-amber-100'
+                                        }`}>
                                         {sub.estado}
                                     </span>
                                 </div>
@@ -920,60 +968,84 @@ const Forms: React.FC = () => {
                         ))}
                     </div>
 
-                    {/* VISTA DESKTOP: TABLA */}
-                    <div className="hidden md:block responsive-table-container">
-                        <table className="w-full text-left min-w-[1200px]">
-                            <thead className="bg-[#4a69bd] text-white text-[9px] font-black uppercase tracking-widest">
-                                <tr>
-                                    <th className="px-4 py-5 border-r border-white/10 text-center">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedIds.size > 0 && selectedIds.size === filteredSubmissions.length}
-                                            onChange={toggleSelectAll}
-                                            className="size-4 rounded border-white/20 bg-transparent text-sky-600 focus:ring-sky-500"
-                                        />
+                    {/* VISTA ESCRITORIO: TABLA */}
+                    <div className="hidden md:block overflow-x-auto pb-4">
+                        <table className="w-full min-w-[2000px] text-left border-collapse text-[10px] table-fixed">
+                            <thead>
+                                <tr className="bg-[#3b82f6] text-white font-black tracking-wider border-b border-white/10">
+                                    <th style={{ width: columnWidths.checkbox, minWidth: columnWidths.checkbox }} className="px-4 py-5 border-r border-white/10 text-center group cursor-pointer hover:bg-white/10 transition-colors relative" onClick={() => handleSort('fecha')}>
+                                        <div className="flex flex-col items-center justify-center gap-0.5 h-full">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedIds.size > 0 && selectedIds.size === filteredSubmissions.length}
+                                                onChange={(e) => { e.stopPropagation(); toggleSelectAll(); }}
+                                                className="size-4 rounded border-white/20 bg-transparent text-sky-600 focus:ring-sky-500 mb-1 cursor-pointer"
+                                            />
+                                            <div className="flex flex-col -space-y-1">
+                                                <span className={`text-[8px] leading-none ${sortConfig.key === 'fecha' && sortConfig.direction === 'asc' ? 'text-white' : 'text-white/40'}`}>▲</span>
+                                                <span className={`text-[8px] leading-none ${sortConfig.key === 'fecha' && sortConfig.direction === 'desc' ? 'text-white' : 'text-white/40'}`}>▼</span>
+                                            </div>
+                                        </div>
+                                        <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('checkbox', e)} />
                                     </th>
-                                    <th className="px-6 py-5 border-r border-white/10 uppercase cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('fecha')}>
+                                    <th style={{ width: columnWidths.fecha, minWidth: columnWidths.fecha }} className="px-6 py-5 border-r border-white/10 uppercase cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('fecha')}>
                                         <div className="flex items-center gap-2">Fecha {sortConfig.key === 'fecha' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                        <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('fecha', e)} />
                                     </th>
-                                    <th className="px-6 py-5 border-r border-white/10 uppercase whitespace-nowrap cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('areaProceso')}>
+                                    <th style={{ width: columnWidths.areaProceso, minWidth: columnWidths.areaProceso }} className="px-6 py-5 border-r border-white/10 uppercase whitespace-nowrap cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('areaProceso')}>
                                         <div className="flex items-center gap-2">Área de Proceso {sortConfig.key === 'areaProceso' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                        <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('areaProceso', e)} />
                                     </th>
-                                    <th className="px-6 py-5 border-r border-white/10 uppercase cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('op')}>
+                                    <th style={{ width: columnWidths.op, minWidth: columnWidths.op }} className="px-6 py-5 border-r border-white/10 uppercase cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('op')}>
                                         <div className="flex items-center gap-2">OP {sortConfig.key === 'op' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                        <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('op', e)} />
                                     </th>
-                                    <th className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('planoOpc')}>
+                                    <th style={{ width: columnWidths.planoOpc, minWidth: columnWidths.planoOpc }} className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('planoOpc')}>
                                         <div className="flex items-center gap-2">PLANO (OPC) {sortConfig.key === 'planoOpc' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                        <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('planoOpc', e)} />
                                     </th>
-                                    <th className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('disenoReferencia')}>
+                                    <th style={{ width: columnWidths.disenoReferencia, minWidth: columnWidths.disenoReferencia }} className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('disenoReferencia')}>
                                         <div className="flex items-center gap-2">DISEÑO/REFERENCIA {sortConfig.key === 'disenoReferencia' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                        <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('disenoReferencia', e)} />
                                     </th>
-                                    <th className="px-6 py-5 border-r border-white/10 text-center cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('cantTotal')}>
+                                    <th style={{ width: columnWidths.cantTotal, minWidth: columnWidths.cantTotal }} className="px-6 py-5 border-r border-white/10 text-center cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('cantTotal')}>
                                         <div className="flex items-center justify-center gap-2">CANT TOTAL {sortConfig.key === 'cantTotal' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                        <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('cantTotal', e)} />
                                     </th>
-                                    <th className="px-6 py-5 border-r border-white/10 text-center cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('cantRetenida')}>
+                                    <th style={{ width: columnWidths.cantRetenida, minWidth: columnWidths.cantRetenida }} className="px-6 py-5 border-r border-white/10 text-center cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('cantRetenida')}>
                                         <div className="flex items-center justify-center gap-2">CANT RETENIDA {sortConfig.key === 'cantRetenida' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                        <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('cantRetenida', e)} />
                                     </th>
-                                    <th className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('estado')}>
+                                    <th style={{ width: columnWidths.estado, minWidth: columnWidths.estado }} className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('estado')}>
                                         <div className="flex items-center gap-2">ESTADO {sortConfig.key === 'estado' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                        <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('estado', e)} />
                                     </th>
-                                    <th className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('defecto')}>
+                                    <th style={{ width: columnWidths.defecto, minWidth: columnWidths.defecto }} className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('defecto')}>
                                         <div className="flex items-center gap-2">DEFECTO {sortConfig.key === 'defecto' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                        <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('defecto', e)} />
                                     </th>
-                                    <th className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('reviso')}>
+                                    <th style={{ width: columnWidths.reviso, minWidth: columnWidths.reviso }} className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('reviso')}>
                                         <div className="flex items-center gap-2">REVISÓ {sortConfig.key === 'reviso' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                        <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('reviso', e)} />
                                     </th>
-                                    <th className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('responsable')}>
+                                    <th style={{ width: columnWidths.responsable, minWidth: columnWidths.responsable }} className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('responsable')}>
                                         <div className="flex items-center gap-2">RESPONSABLE {sortConfig.key === 'responsable' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                        <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('responsable', e)} />
                                     </th>
-                                    <th className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('accionCorrectiva')}>
+                                    <th style={{ width: columnWidths.accionCorrectiva, minWidth: columnWidths.accionCorrectiva }} className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('accionCorrectiva')}>
                                         <div className="flex items-center gap-2">ACCION CORRECTIVA {sortConfig.key === 'accionCorrectiva' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                        <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('accionCorrectiva', e)} />
                                     </th>
-                                    <th className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group" onClick={() => handleSort('observacion')}>
+                                    <th style={{ width: columnWidths.observacion, minWidth: columnWidths.observacion }} className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('observacion')}>
                                         <div className="flex items-center gap-2">OBSERVACION {sortConfig.key === 'observacion' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                        <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('observacion', e)} />
                                     </th>
-                                    <th className="px-6 py-5 text-center border-r border-white/10">ACCIONES</th>
+                                    <th style={{ width: columnWidths.actions, minWidth: columnWidths.actions }} className="px-6 py-5 text-center border-r border-white/10 relative">
+                                        ACCIONES
+                                        <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('actions', e)} />
+                                    </th>
                                 </tr>
+
                                 <tr className="bg-white/5 border-b dark:border-white/10">
                                     <th className="p-2 border-r dark:border-white/5"></th>
                                     <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.fecha} onChange={e => setColumnFilters({ ...columnFilters, fecha: e.target.value })} /></th>
@@ -994,12 +1066,12 @@ const Forms: React.FC = () => {
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-white/5">
                                 {loading ? (
-                                    <tr><td colSpan={14} className="px-8 py-24 text-center opacity-50"><p className="font-bold text-sm tracking-tight uppercase">Cargando inspecciones...</p></td></tr>
-                                ) : filteredSubmissions.length === 0 ? (
-                                    <tr><td colSpan={14} className="px-8 py-24 text-center opacity-20"><p className="font-bold text-sm tracking-tight uppercase">Sin resultados para los filtros actuales</p></td></tr>
-                                ) : filteredSubmissions.map(sub => (
+                                    <tr><td colSpan={15} className="px-8 py-24 text-center opacity-50"><p className="font-bold text-sm tracking-tight uppercase">Cargando inspecciones...</p></td></tr>
+                                ) : paginatedSubmissions.length === 0 ? (
+                                    <tr><td colSpan={15} className="px-8 py-24 text-center opacity-20"><p className="font-bold text-sm tracking-tight uppercase">Sin resultados para los filtros actuales</p></td></tr>
+                                ) : paginatedSubmissions.map(sub => (
                                     <tr key={sub.id} className={`hover:bg-slate-50 dark:hover:bg-white/5 transition-all text-[10px] font-bold ${selectedIds.has(sub.id) ? 'bg-sky-50/50 dark:bg-sky-900/10' : ''}`}>
-                                        <td className="px-4 py-4 text-center border-r dark:border-white/5">
+                                        <td style={{ width: columnWidths.checkbox }} className="px-4 py-4 text-center border-r dark:border-white/5 truncate">
                                             <input
                                                 type="checkbox"
                                                 checked={selectedIds.has(sub.id)}
@@ -1007,27 +1079,39 @@ const Forms: React.FC = () => {
                                                 className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
                                             />
                                         </td>
-                                        <td className="px-6 py-4 text-slate-500 whitespace-nowrap border-r dark:border-white/5">{sub.fecha}</td>
-                                        <td className="px-6 py-4 uppercase text-slate-800 dark:text-slate-100 border-r dark:border-white/5">{sub.areaProceso}</td>
-                                        <td className="px-6 py-4 font-mono text-sky-700 border-r dark:border-white/5">{sub.op}</td>
-                                        <td className="px-6 py-4 border-r dark:border-white/5">{sub.planoOpc || '-'}</td>
-                                        <td className="px-6 py-4 uppercase text-slate-600 dark:text-slate-400 border-r dark:border-white/5">{sub.disenoReferencia}</td>
-                                        <td className="px-6 py-4 text-center border-r dark:border-white/5">{sub.cantTotal}</td>
-                                        <td className="px-6 py-4 text-center text-rose-600 border-r dark:border-white/5">{sub.cantRetenida}</td>
-                                        <td className="px-6 py-4 border-r dark:border-white/5">
-                                            <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase border ${sub.estado === 'Aprobado' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : sub.estado === 'Rechazado' ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                                        <td style={{ width: columnWidths.fecha }} className="px-6 py-4 border-r dark:border-white/5 font-bold text-black dark:text-white uppercase truncate" title={sub.fecha}>{sub.fecha}</td>
+                                        <td style={{ width: columnWidths.areaProceso }} className="px-6 py-4 uppercase border-r dark:border-white/5 font-black text-black dark:text-white truncate" title={sub.areaProceso}>{sub.areaProceso}</td>
+                                        <td style={{ width: columnWidths.op }} className="px-6 py-4 font-mono font-bold text-black dark:text-white uppercase border-r dark:border-white/5 truncate" title={sub.op}>{sub.op}</td>
+                                        <td style={{ width: columnWidths.planoOpc }} className="px-6 py-4 text-black dark:text-white font-bold uppercase border-r dark:border-white/5 text-center truncate" title={sub.planoOpc || '-'}>{sub.planoOpc || '-'}</td>
+                                        <td style={{ width: columnWidths.disenoReferencia }} className="px-6 py-4 text-black dark:text-white font-black uppercase text-[9px] tracking-wider border-r dark:border-white/5 truncate" title={sub.disenoReferencia}>{sub.disenoReferencia}</td>
+                                        <td style={{ width: columnWidths.cantTotal }} className="px-6 py-4 text-center font-bold text-black dark:text-white border-r dark:border-white/5 truncate">{sub.cantTotal}</td>
+                                        <td style={{ width: columnWidths.cantRetenida }} className={`px-6 py-4 text-center font-black border-r dark:border-white/5 truncate ${sub.cantRetenida > 0 ? 'text-rose-600' : 'text-black dark:text-white'}`}>{sub.cantRetenida}</td>
+                                        <td style={{ width: columnWidths.estado }} className="px-6 py-4 text-center border-r dark:border-white/5 truncate">
+                                            <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase border ${(sub.estado || '').toUpperCase() === 'APROBADO' ? 'bg-emerald-400 text-black border-emerald-500' :
+                                                (sub.estado || '').toUpperCase() === 'REPROCESAR' ? 'bg-red-600 text-white border-red-700' :
+                                                    (sub.estado || '').toUpperCase() === 'RECHAZADO' ? 'bg-rose-100 text-rose-800 border-rose-200' :
+                                                        'bg-amber-50 text-amber-700 border-amber-100'
+                                                }`}>
                                                 {sub.estado}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4 uppercase text-rose-600 border-r dark:border-white/5">{sub.defecto}</td>
-                                        <td className="px-6 py-4 uppercase text-slate-600 dark:text-slate-400 border-r dark:border-white/5">{sub.reviso}</td>
-                                        <td className="px-6 py-4 uppercase text-slate-600 dark:text-slate-400 border-r dark:border-white/5">{sub.responsable}</td>
-                                        <td className="px-6 py-4 text-sky-600 italic border-r dark:border-white/5">{sub.accionCorrectiva}</td>
-                                        <td className="px-6 py-4 max-w-xs truncate border-r dark:border-white/5">{sub.observacion}</td>
-                                        <td className="px-6 py-4 text-center border-r dark:border-white/5 bg-slate-50/50 dark:bg-white/5">
-                                            <div className="flex justify-center gap-1">
-                                                <button onClick={() => handleEdit(sub)} className="p-2 text-slate-300 hover:text-sky-600 transition-colors" title="Editar"><EditIcon className="scale-75" /></button>
-                                                <button onClick={() => handleDelete(sub.id)} className="p-2 text-slate-300 hover:text-rose-600 transition-colors" title="Eliminar"><TrashIcon className="scale-75" /></button>
+                                        <td style={{ width: columnWidths.defecto }} className={`px-6 py-4 uppercase border-r dark:border-white/5 font-bold truncate ${['NINGUNO', 'NA'].includes((sub.defecto || '').toUpperCase()) ? 'text-black dark:text-white' : 'text-rose-600'}`} title={sub.defecto}>{sub.defecto}</td>
+                                        <td style={{ width: columnWidths.reviso }} className="px-6 py-4 uppercase text-black dark:text-white font-bold border-r dark:border-white/5 truncate" title={sub.reviso}>{sub.reviso}</td>
+                                        <td style={{ width: columnWidths.responsable }} className="px-6 py-4 uppercase text-black dark:text-white font-bold border-r dark:border-white/5 truncate" title={sub.responsable}>{sub.responsable}</td>
+                                        <td style={{ width: columnWidths.accionCorrectiva }} className={`px-6 py-4 border-r dark:border-white/5 font-bold truncate ${(sub.accionCorrectiva || '').toUpperCase() === 'INTERNA' ? 'text-amber-500' :
+                                            (sub.accionCorrectiva || '').toUpperCase() === 'REPOSICION' ? 'text-rose-600' :
+                                                ['NA', 'NINGUNO', '', null, undefined].includes(sub.accionCorrectiva) || (sub.accionCorrectiva || '').toUpperCase() === 'NA' ? 'text-black dark:text-white font-normal' :
+                                                    'text-amber-500'
+                                            }`} title={sub.accionCorrectiva}>{sub.accionCorrectiva}</td>
+                                        <td style={{ width: columnWidths.observacion }} className={`px-6 py-4 uppercase text-[9px] border-r dark:border-white/5 truncate ${['NA', 'NINGUNA', 'NINGUNO', ''].includes((sub.observacion || '').toUpperCase()) ? 'text-black dark:text-white' : 'text-rose-600 font-bold'}`} title={sub.observacion}>{sub.observacion}</td>
+                                        <td style={{ width: columnWidths.actions }} className="px-4 py-4 text-center truncate">
+                                            <div className="flex items-center justify-center gap-2">
+                                                <button onClick={() => handleEdit(sub)} className="p-2 text-slate-800 dark:text-white hover:text-sky-600 transition-colors" title="Editar">
+                                                    <EditIcon className="scale-90" />
+                                                </button>
+                                                <button onClick={() => handleDelete(sub.id)} className="p-2 text-slate-800 dark:text-white hover:text-rose-600 transition-colors" title="Eliminar">
+                                                    <TrashIcon className="scale-90" />
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>
@@ -1035,6 +1119,53 @@ const Forms: React.FC = () => {
                             </tbody>
                         </table>
                     </div>
+
+                    {/* PAGINACIÓN */}
+                    {totalPages > 1 && (
+                        <div className="flex flex-col md:flex-row justify-between items-center gap-4 py-6 px-8 bg-slate-50 dark:bg-black/10 border-t dark:border-white/5">
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                Mostrando {Math.min(filteredSubmissions.length, (currentPage - 1) * itemsPerPage + 1)} - {Math.min(filteredSubmissions.length, currentPage * itemsPerPage)} de {filteredSubmissions.length} registros
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                    className={`p-2 rounded-lg transition-all ${currentPage === 1 ? 'text-slate-300 dark:text-slate-700 cursor-not-allowed' : 'text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-900/20 active:scale-90'}`}
+                                >
+                                    <ChevronLeftIcon className="scale-75" />
+                                </button>
+
+                                <div className="flex items-center gap-1">
+                                    {[...Array(totalPages)].map((_, i) => {
+                                        const page = i + 1;
+                                        // Show first, last, and pages around current
+                                        if (page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1)) {
+                                            return (
+                                                <button
+                                                    key={page}
+                                                    onClick={() => setCurrentPage(page)}
+                                                    className={`size-8 rounded-lg text-[10px] font-black transition-all ${currentPage === page ? 'bg-sky-600 text-white shadow-lg shadow-sky-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'}`}
+                                                >
+                                                    {page}
+                                                </button>
+                                            );
+                                        } else if (page === currentPage - 2 || page === currentPage + 2) {
+                                            return <span key={page} className="text-slate-300 dark:text-slate-700">...</span>;
+                                        }
+                                        return null;
+                                    })}
+                                </div>
+
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage === totalPages}
+                                    className={`p-2 rounded-lg transition-all ${currentPage === totalPages ? 'text-slate-300 dark:text-slate-700 cursor-not-allowed' : 'text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-900/20 active:scale-90'}`}
+                                >
+                                    <ChevronRightIcon className="scale-75" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 

@@ -25,6 +25,13 @@ El objetivo principal es convertir la gestión operativa en una ventaja estraté
 - **Instalaciones:** Seguimiento al avance de instalaciones en obra.
 - **Biblioteca Técnica:** Repositorio centralizado de documentos y normativas.
 
+### 📱 Experiencia Móvil & PWA
+- **100% Responsivo:** Diseño adaptativo optimizado para dispositivos móviles (smartphones y tablets) y escritorio.
+- **PWA (Progressive Web App):** 
+  - Instalable en Android, iOS y Escritorio (Chrome/Edge).
+  - Funciona como una aplicación nativa (sin barra de navegación del navegador).
+  - Actualizaciones automáticas.
+
 ## 💻 Stack Tecnológico
 
 Este proyecto utiliza una arquitectura moderna y escalable (MACH):

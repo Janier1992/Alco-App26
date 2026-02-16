@@ -75,7 +75,7 @@ export const analyzeRootCause = async (problemDescription: string, context?: str
         ${context ? `Contexto adicional: ${context}` : ''}
 
         Realiza un análisis de Causa Raíz utilizando la metodología de los 5 Porqués.
-        Responde SIEMPRE en Español.
+        Responde SIEMPRE en Español. Todos los textos dentro del JSON deben estar en español.
         Devuelve el resultado ESTRICTAMENTE en formato JSON con la siguiente estructura (sin bloques de código ni texto adicional):
         {
             "why1": "...",
@@ -117,7 +117,7 @@ export const analyzeClaim = async (claimDescription: string): Promise<any> => {
         "${claimDescription}"
 
         Clasifica la severidad (Baja, Media, Alta, Crítica) y redacta una respuesta empática y profesional.
-        Responde SIEMPRE en Español.
+        Responde SIEMPRE en Español. Asegúrate de que todos los campos de texto en la respuesta JSON estén en español (ej. "category", "severity", etc).
         Devuelve el resultado ESTRICTAMENTE en formato JSON:
         {
             "severity": "Media",

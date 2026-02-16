@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNotification } from './NotificationSystem';
 import { MetrologyReplacementRecord } from '../types';
 import { METROLOGY_SECCIONES, METROLOGY_MARCAS, EditIcon } from '../constants';
+import { insforge, supabase } from '../insforgeClient';
 
 const Breadcrumbs: React.FC<{ crumbs: { label: string, path?: string }[] }> = ({ crumbs }) => (
     <nav className="flex mb-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
@@ -16,13 +17,12 @@ const Breadcrumbs: React.FC<{ crumbs: { label: string, path?: string }[] }> = ({
 
 export default function MetrologyReplacement() {
     const { addNotification } = useNotification();
-    const [isFormOpen, setIsFormOpen] = useState(true);
-    const [records, setRecords] = useState<MetrologyReplacementRecord[]>(() => {
-        const saved = localStorage.getItem('alco_metrology_replacement_v1');
-        return saved ? JSON.parse(saved) : [];
-    });
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [records, setRecords] = useState<MetrologyReplacementRecord[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
 
-    const INITIAL_DATA: Omit<MetrologyReplacementRecord, 'id' | 'firmaResponsableArea' | 'firmaResponsableCalidad'> = {
+    const INITIAL_DATA: MetrologyReplacementRecord = {
+        id: '',
         fechaRegistro: new Date().toISOString().split('T')[0],
         nombreEquipo: '',
         marca: '',
@@ -30,16 +30,16 @@ export default function MetrologyReplacement() {
         areaUso: '',
         nombreResponsable: '',
         motivoReposicion: '',
-        devuelveEquipoAnterior: '',
+        devuelveEquipoAnterior: 'NO',
         descripcionBaja: '',
-        seCobraEquipo: '',
-        nombreResponsableCalidad: ''
+        seCobraEquipo: 'NO',
+        nombreResponsableCalidad: '',
+        firmaResponsableArea: '',
+        firmaResponsableCalidad: ''
     };
 
-    const [formData, setFormData] = useState(INITIAL_DATA);
+    const [formData, setFormData] = useState<MetrologyReplacementRecord>(INITIAL_DATA as MetrologyReplacementRecord);
     const [editingId, setEditingId] = useState<string | null>(null);
-
-    // Refs para Firmas
 
     // Refs para Firmas
     const canvasAreaRef = useRef<HTMLCanvasElement>(null);
@@ -47,9 +47,57 @@ export default function MetrologyReplacement() {
     const [isDrawingArea, setIsDrawingArea] = useState(false);
     const [isDrawingCalidad, setIsDrawingCalidad] = useState(false);
 
+    const fetchRecords = async () => {
+        setIsLoading(true);
+        try {
+            const { data, error } = await supabase.from('metrology_replacements').select('*').order('created_at', { ascending: false });
+            if (error) throw error;
+
+            const mappedRecords: MetrologyReplacementRecord[] = (data || []).map((r: any) => ({
+                id: r.id,
+                fechaRegistro: r.fecha_registro,
+                nombreEquipo: r.nombre_equipo,
+                marca: r.marca,
+                codigo: r.codigo,
+                areaUso: r.area_uso,
+                nombreResponsable: r.nombre_responsable,
+                motivoReposicion: r.motivo_reposicion,
+                devuelveEquipoAnterior: r.devuelve_equipo_anterior || '',
+                descripcionBaja: r.descripcion_baja,
+                seCobraEquipo: r.se_cobra_equipo || '',
+                nombreResponsableCalidad: r.nombre_responsable_calidad,
+                firmaResponsableArea: r.firma_responsable_area_url || '',
+                firmaResponsableCalidad: r.firma_responsable_calidad_url || ''
+            }));
+
+            setRecords(mappedRecords);
+        } catch (error: any) {
+            console.error('Error fetching metrology replacements:', error);
+            addNotification({ type: 'error', title: 'ERROR DE CARGA', message: 'No se pudieron recuperar los registros de reposición.' });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     useEffect(() => {
-        localStorage.setItem('alco_metrology_replacement_v1', JSON.stringify(records));
-    }, [records]);
+        fetchRecords();
+    }, []);
+
+    // Helper to upload base64 signature to Insforge Storage
+    const uploadSignature = async (base64: string, prefix: string) => {
+        if (!base64 || base64.length < 100) return '';
+        try {
+            const fileName = `rep_${prefix}_${Date.now()}.png`;
+            const blob = await (await fetch(base64)).blob();
+            const { error } = await supabase.storage.from('signatures').upload(fileName, blob, { contentType: 'image/png' });
+            if (error) throw error;
+            const result = (supabase.storage.from('signatures') as any).getPublicUrl(fileName);
+            return result.data?.publicUrl || result;
+        } catch (error) {
+            console.error('Error uploading signature:', error);
+            return '';
+        }
+    };
 
     // Lógica de Firma (Reutilizable)
     const getCoordinates = (e: React.PointerEvent, canvas: HTMLCanvasElement) => {
@@ -97,7 +145,7 @@ export default function MetrologyReplacement() {
     };
 
     const resetForm = () => {
-        setFormData(INITIAL_DATA);
+        setFormData(INITIAL_DATA as MetrologyReplacementRecord);
         setEditingId(null);
         setIsFormOpen(false);
         clearSignature(canvasAreaRef);
@@ -106,51 +154,82 @@ export default function MetrologyReplacement() {
 
     const handleEdit = (record: MetrologyReplacementRecord) => {
         const { id, firmaResponsableArea, firmaResponsableCalidad, ...data } = record;
-        setFormData(data);
+        setFormData(record);
         setEditingId(id);
         setIsFormOpen(true);
 
         setTimeout(() => {
             const loadSig = (url: string, ref: React.RefObject<HTMLCanvasElement>) => {
+                if (!url) return;
                 const ctx = ref.current?.getContext('2d');
                 const img = new Image();
+                img.crossOrigin = "anonymous";
                 img.onload = () => ctx?.drawImage(img, 0, 0);
                 img.src = url;
             };
             if (firmaResponsableArea) loadSig(firmaResponsableArea, canvasAreaRef);
             if (firmaResponsableCalidad) loadSig(firmaResponsableCalidad, canvasCalidadRef);
-        }, 100);
+        }, 300);
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const firmaResponsableArea = canvasAreaRef.current?.toDataURL() || '';
-        const firmaResponsableCalidad = canvasCalidadRef.current?.toDataURL() || '';
+        try {
+            addNotification({ type: 'info', title: 'PROCESANDO...', message: 'Guardando registro y firmas...' });
 
-        const recordHeader = editingId ? { id: editingId } : { id: `REP-${Date.now()}` };
+            const firmaAreaUrl = canvasAreaRef.current?.toDataURL() || '';
+            const firmaCalidadUrl = canvasCalidadRef.current?.toDataURL() || '';
 
-        const newRecord: MetrologyReplacementRecord = {
-            ...recordHeader,
-            firmaResponsableArea,
-            firmaResponsableCalidad,
-            ...formData
-        } as MetrologyReplacementRecord;
+            let firmaArea = formData.firmaResponsableArea || '';
+            let firmaCalidad = formData.firmaResponsableCalidad || '';
 
-        if (editingId) {
-            setRecords(prev => prev.map(r => r.id === editingId ? newRecord : r));
-            addNotification({ type: 'success', title: 'REGISTRO ACTUALIZADO', message: `Reposición de ${formData.nombreEquipo} actualizada.` });
-        } else {
-            setRecords([newRecord, ...records]);
-            addNotification({ type: 'success', title: 'REGISTRO GUARDADO', message: `Reposición de ${formData.nombreEquipo} guardada correctamente.` });
+            if (firmaAreaUrl.startsWith('data:')) firmaArea = await uploadSignature(firmaAreaUrl, 'area');
+            if (firmaCalidadUrl.startsWith('data:')) firmaCalidad = await uploadSignature(firmaCalidadUrl, 'calidad');
+
+            const dbPayload = {
+                fecha_registro: formData.fechaRegistro,
+                nombre_equipo: formData.nombreEquipo,
+                marca: formData.marca,
+                codigo: formData.codigo,
+                area_uso: formData.areaUso,
+                nombre_responsable: formData.nombreResponsable,
+                motivo_reposicion: formData.motivoReposicion,
+                devuelve_equipo_anterior: formData.devuelveEquipoAnterior,
+                descripcion_baja: formData.descripcionBaja,
+                se_cobra_equipo: formData.seCobraEquipo,
+                nombre_responsable_calidad: formData.nombreResponsableCalidad,
+                firma_responsable_area_url: firmaArea,
+                firma_responsable_calidad_url: firmaCalidad
+            };
+
+            let result;
+            if (editingId) {
+                result = await supabase.from('metrology_replacements').update(dbPayload).eq('id', editingId);
+            } else {
+                result = await supabase.from('metrology_replacements').insert([dbPayload]);
+            }
+
+            if (result.error) throw result.error;
+
+            addNotification({ type: 'success', title: editingId ? 'REGISTRO ACTUALIZADO' : 'REGISTRO GUARDADO', message: `Reposición de ${formData.nombreEquipo} procesada.` });
+            fetchRecords();
+            resetForm();
+        } catch (error: any) {
+            console.error('Error saving replacement:', error);
+            addNotification({ type: 'error', title: 'ERROR', message: error.message });
         }
-
-        resetForm();
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = async (id: string) => {
         if (confirm('¿Eliminar este registro?')) {
-            setRecords(prev => prev.filter(r => r.id !== id));
-            addNotification({ type: 'error', title: 'REGISTRO ELIMINADO', message: 'Registro eliminado del historial.' });
+            try {
+                const { error } = await supabase.from('metrology_replacements').delete().eq('id', id);
+                if (error) throw error;
+                setRecords(prev => prev.filter(r => r.id !== id));
+                addNotification({ type: 'error', title: 'REGISTRO ELIMINADO', message: 'Registro eliminado de la base de datos.' });
+            } catch (error) {
+                addNotification({ type: 'error', title: 'ERROR', message: 'No se pudo eliminar el registro.' });
+            }
         }
     };
 
@@ -328,7 +407,9 @@ export default function MetrologyReplacement() {
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-[#0b0b14] divide-y divide-slate-100 dark:divide-white/5">
-                            {records.length === 0 ? (
+                            {isLoading ? (
+                                <tr><td colSpan={5} className="p-12 text-center text-xs font-bold text-slate-400 uppercase animate-pulse">Cargando historial...</td></tr>
+                            ) : records.length === 0 ? (
                                 <tr>
                                     <td colSpan={5} className="p-8 text-center text-xs font-bold text-slate-400 uppercase tracking-widest">No hay registros</td>
                                 </tr>
