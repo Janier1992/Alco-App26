@@ -1,24 +1,36 @@
 import { useState, useEffect } from 'react';
 
 // Extend Window interface to support beforeinstallprompt event
-interface BeforeInstallPromptEvent extends Event {
+export interface BeforeInstallPromptEvent extends Event {
     prompt: () => void;
     userChoice: Promise<{ outcome: 'accepted' | 'dismissed', platform: string }>;
 }
 
+let globalDeferredPrompt: BeforeInstallPromptEvent | null = null;
+const promptListeners = new Set<(prompt: BeforeInstallPromptEvent | null) => void>();
+
+if (typeof window !== 'undefined') {
+    window.addEventListener('beforeinstallprompt', (e: Event) => {
+        e.preventDefault();
+        globalDeferredPrompt = e as BeforeInstallPromptEvent;
+        promptListeners.forEach(listener => listener(globalDeferredPrompt));
+    });
+}
+
 export const usePWAInstall = () => {
-    const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+    const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(globalDeferredPrompt);
 
     useEffect(() => {
-        const handler = (e: Event) => {
-            e.preventDefault();
-            setDeferredPrompt(e as BeforeInstallPromptEvent);
+        const handler = (prompt: BeforeInstallPromptEvent | null) => {
+            setDeferredPrompt(prompt);
         };
 
-        window.addEventListener('beforeinstallprompt', handler);
+        promptListeners.add(handler);
+        // Explicitly set in case it fired just before this effect ran
+        setDeferredPrompt(globalDeferredPrompt);
 
         return () => {
-            window.removeEventListener('beforeinstallprompt', handler);
+            promptListeners.delete(handler);
         };
     }, []);
 
@@ -29,7 +41,8 @@ export const usePWAInstall = () => {
 
         const { outcome } = await deferredPrompt.userChoice;
         if (outcome === 'accepted') {
-            setDeferredPrompt(null);
+            globalDeferredPrompt = null;
+            promptListeners.forEach(listener => listener(null));
         }
     };
 
