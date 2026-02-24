@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import Breadcrumbs from './Breadcrumbs';
 import {
     ConstructionIcon, ShieldCheckIcon, RobotIcon, RulerIcon,
@@ -32,13 +32,14 @@ const Installations: React.FC = () => {
         addNotification({ type: 'info', title: 'CONSULTOR IA', message: 'Analizando requerimiento técnico de obra...' });
 
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY);
+            const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
             const prompt = `Actúa como Experto en Instalaciones Alco. Pregunta: "${aiQuery}". 
-            Responde de forma técnica citando NSR-10 o estándares de estanqueidad si aplica. Sé breve.`;
-            const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
+            Responde de forma técnica citando NSR-10 o estándares de estanqueidad si aplica. Sé breve. Responde SIEMPRE en Español.`;
+            const response = await model.generateContent(prompt);
 
             // Simulamos respuesta en modal o alerta por ahora
-            alert(`DICTAMEN IA: ${response.text}`);
+            alert(`DICTAMEN IA: ${response.response.text()}`);
             setAiQuery('');
         } catch (e) {
             addNotification({ type: 'error', title: 'FALLO IA', message: 'No se pudo procesar la consulta técnica.' });
@@ -62,7 +63,7 @@ const Installations: React.FC = () => {
                     <h1 className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white uppercase tracking-tighter leading-none">Soporte <span className="text-emerald-500">Obras</span></h1>
                     <p className="text-slate-500 font-bold mt-2 uppercase text-xs tracking-widest flex items-center gap-2"><ShieldCheckIcon /> Aseguramiento de Estándares COBE Alco</p>
                 </div>
-                <div className="flex gap-2 p-1.5 bg-slate-100 dark:bg-alco-surface rounded-2xl border dark:border-white/5 shadow-sm">
+                <div className="flex gap-2 p-1.5 bg-slate-100 dark:bg-[#111827] rounded-2xl border dark:border-white/5 shadow-sm">
                     <button onClick={() => setSelectedTab('standard')} className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${selectedTab === 'standard' ? 'bg-white dark:bg-slate-700 text-sky-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Estándar Alco</button>
                     <button onClick={() => setSelectedTab('checklist')} className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${selectedTab === 'checklist' ? 'bg-white dark:bg-slate-700 text-sky-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Validación QA</button>
                 </div>
@@ -71,7 +72,7 @@ const Installations: React.FC = () => {
             {selectedTab === 'standard' ? (
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fade-in">
                     <div className="lg:col-span-8 space-y-6">
-                        <div className="bg-white dark:bg-alco-surface p-10 rounded-[3.5rem] border-l-8 border-emerald-500 shadow-xl border dark:border-white/5">
+                        <div className="bg-white dark:bg-[#111827] p-10 rounded-[3.5rem] border-l-8 border-emerald-500 shadow-xl border dark:border-white/5">
                             <h3 className="text-xl font-black uppercase mb-8 flex items-center gap-3"><RulerIcon className="text-emerald-500" /> Límites Técnicos Críticos</h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                 {[
@@ -118,7 +119,7 @@ const Installations: React.FC = () => {
                 </div>
             ) : (
                 <div className="animate-fade-in-up space-y-8">
-                    <div className="bg-white dark:bg-alco-surface rounded-[4rem] border dark:border-white/5 shadow-xl overflow-hidden">
+                    <div className="bg-white dark:bg-[#111827] rounded-[4rem] border dark:border-white/5 shadow-xl overflow-hidden">
                         <div className="p-10 border-b dark:border-white/5 bg-slate-50 dark:bg-white/5 flex justify-between items-center">
                             <h3 className="text-2xl font-black uppercase tracking-tighter">Checklist QA: Liberación de Vano</h3>
                             <button onClick={() => setChecklist(checklist.map(i => ({ ...i, completed: null })))} className="text-[10px] font-black text-slate-400 hover:text-rose-500 uppercase tracking-widest transition-colors"><RefreshIcon className="scale-75" /> Reiniciar</button>

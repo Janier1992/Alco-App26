@@ -12,8 +12,10 @@
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
-    "@google/genai": "^1.30.0",
-    "@supabase/supabase-js": "^2.95.3",
+    "@google/generative-ai": "^0.24.1",
+    "@insforge/sdk": "^1.1.5",
+    "emoji-picker-react": "^4.18.0",
+    "pg": "^8.18.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-markdown": "^10.1.0",

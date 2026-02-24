@@ -27,9 +27,8 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
         setNotifications(prev => [...prev, newNotification]);
         setTimeout(() => {
             removeNotification(newNotification.id);
-        }, 5000); // Auto-dismiss after 5 seconds
+        }, 5000);
     }, [removeNotification]);
-
 
     return (
         <NotificationContext.Provider value={{ addNotification }}>
@@ -54,51 +53,121 @@ const ICONS = {
     error: <XCircleIcon />,
 };
 
-const TYPE_CLASSES = {
-    info: 'bg-white dark:bg-sky-900/50 border-sky-500 text-sky-800 dark:text-sky-200 shadow-[0_10px_30px_rgba(14,165,233,0.1)]',
-    success: 'bg-white dark:bg-green-900/50 border-green-500 text-green-800 dark:text-green-200 shadow-[0_10px_30px_rgba(34,197,94,0.1)]',
-    warning: 'bg-white dark:bg-yellow-900/50 border-yellow-500 text-yellow-800 dark:text-yellow-200 shadow-[0_10px_30px_rgba(234,179,8,0.1)]',
-    error: 'bg-white dark:bg-red-900/50 border-red-500 text-red-800 dark:text-red-200 shadow-[0_10px_30px_rgba(239,68,68,0.1)]',
+const TYPE_CONFIG = {
+    info: {
+        bg: 'bg-white/90 dark:bg-[#111827]/90',
+        border: 'border-indigo-500/30',
+        iconBg: 'bg-indigo-500/10',
+        iconColor: 'text-indigo-500',
+        progressBg: 'bg-indigo-500',
+    },
+    success: {
+        bg: 'bg-white/90 dark:bg-[#111827]/90',
+        border: 'border-emerald-500/30',
+        iconBg: 'bg-emerald-500/10',
+        iconColor: 'text-emerald-500',
+        progressBg: 'bg-emerald-500',
+    },
+    warning: {
+        bg: 'bg-white/90 dark:bg-[#111827]/90',
+        border: 'border-amber-500/30',
+        iconBg: 'bg-amber-500/10',
+        iconColor: 'text-amber-500',
+        progressBg: 'bg-amber-500',
+    },
+    error: {
+        bg: 'bg-white/90 dark:bg-[#111827]/90',
+        border: 'border-rose-500/30',
+        iconBg: 'bg-rose-500/10',
+        iconColor: 'text-rose-500',
+        progressBg: 'bg-rose-500',
+    },
 };
 
 const NotificationToast: React.FC<{ notification: Notification; onRemove: (id: number) => void }> = ({ notification, onRemove }) => {
     const [exiting, setExiting] = useState(false);
-    
+    const [progress, setProgress] = useState(100);
+    const config = TYPE_CONFIG[notification.type];
+
     useEffect(() => {
-        // Set a shorter timeout to trigger the exit animation before removal
+        const startTime = Date.now();
+        const duration = 5000;
+
+        const interval = setInterval(() => {
+            const elapsed = Date.now() - startTime;
+            const remaining = Math.max(0, 100 - (elapsed / duration) * 100);
+            setProgress(remaining);
+
+            if (remaining <= 0) {
+                clearInterval(interval);
+            }
+        }, 50);
+
         const timer = setTimeout(() => {
             setExiting(true);
         }, 4700);
-        return () => clearTimeout(timer);
+
+        return () => {
+            clearInterval(interval);
+            clearTimeout(timer);
+        };
     }, []);
 
     const handleRemove = () => {
         setExiting(true);
-        // Allow time for animation before removing from state
         setTimeout(() => onRemove(notification.id), 300);
-    }
+    };
 
-    const baseClasses = 'w-full max-w-sm rounded-[1.5rem] p-5 border-l-4 flex items-start gap-4 transition-all duration-300 ease-in-out border dark:border-transparent';
-    const animationClasses = exiting ? 'opacity-0 translate-x-full scale-90' : 'opacity-100 translate-x-0 scale-100';
-    
     return (
-        <div className={`${baseClasses} ${TYPE_CLASSES[notification.type]} ${animationClasses}`} role="alert" aria-live="assertive">
-            <div className="flex-shrink-0 text-2xl pt-0.5">{ICONS[notification.type]}</div>
-            <div className="flex-grow space-y-1">
-                <p className="font-black text-xs uppercase tracking-widest">{notification.title}</p>
-                <p className="text-sm font-medium opacity-80 leading-snug">{notification.message}</p>
+        <div
+            className={`w-full max-w-sm rounded-2xl overflow-hidden transition-all duration-300 ease-in-out backdrop-blur-xl border shadow-2xl
+                ${config.bg} ${config.border}
+                ${exiting ? 'opacity-0 translate-x-full scale-90' : 'opacity-100 translate-x-0 scale-100'}`}
+            role="alert"
+            aria-live="assertive"
+        >
+            <div className="flex items-start gap-3 p-4">
+                {/* Icon */}
+                <div className={`flex-shrink-0 w-9 h-9 rounded-xl ${config.iconBg} flex items-center justify-center ${config.iconColor} text-lg`}>
+                    {ICONS[notification.type]}
+                </div>
+
+                {/* Content */}
+                <div className="flex-grow min-w-0">
+                    <p className="font-black text-[10px] uppercase tracking-widest text-slate-800 dark:text-white mb-0.5">
+                        {notification.title}
+                    </p>
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400 leading-snug">
+                        {notification.message}
+                    </p>
+                </div>
+
+                {/* Close */}
+                <button
+                    onClick={handleRemove}
+                    className="flex-shrink-0 w-6 h-6 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] flex items-center justify-center text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-400 transition-colors"
+                    aria-label="Cerrar notificación"
+                >
+                    <i className="fas fa-times text-[10px]"></i>
+                </button>
             </div>
-            <button onClick={handleRemove} className="flex-shrink-0 text-xl opacity-40 hover:opacity-100 transition-opacity" aria-label="Cerrar notificación">&times;</button>
+
+            {/* Progress Bar */}
+            <div className="h-[2px] w-full bg-slate-100 dark:bg-white/[0.04]">
+                <div
+                    className={`h-full ${config.progressBg} transition-[width] duration-75 ease-linear rounded-full`}
+                    style={{ width: `${progress}%` }}
+                />
+            </div>
         </div>
     );
 };
 
-
 const NotificationContainer: React.FC<{ notifications: Notification[]; onRemove: (id: number) => void }> = ({ notifications, onRemove }) => {
     return (
-        <div className="fixed top-6 right-6 z-[2500] space-y-4 pointer-events-none">
+        <div className="fixed top-6 right-6 z-[2500] space-y-3 pointer-events-none">
             {notifications.map(n => (
-                <div key={n.id} className="pointer-events-auto">
+                <div key={n.id} className="pointer-events-auto animate-slide-in-right">
                     <NotificationToast notification={n} onRemove={onRemove} />
                 </div>
             ))}

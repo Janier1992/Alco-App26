@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import {
     RobotIcon, MicrophoneIcon, CameraIcon, ChevronRightIcon,
     GlobeIcon, LinkIcon, SparklesIcon, XCircleIcon
@@ -8,6 +9,9 @@ import {
 import type { AgentMessage, AgentPersona } from '../types';
 import ReactMarkdown from 'react-markdown';
 import { useAgent } from './AgentContext';
+import { useNotification } from './NotificationSystem';
+
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GOOGLE_GENAI_KEY;
 
 // --- Audio Utils ---
 function base64ToUint8Array(base64: string): Uint8Array {
@@ -46,61 +50,71 @@ async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: 
     return buffer;
 }
 
+const LOCATION_MAP: Record<string, string> = {
+    'dashboard': 'Estás en el Dashboard Principal. Tienes visibilidad de los KPIs globales.',
+    'nc': 'Estás en el módulo de No Conformidades. Puedes ayudar a analizar causas raíz y redactar acciones correctivas.',
+    'forms': 'Estás en Formularios. Ayuda a verificar tolerancias y criterios de aceptación.',
+    'audits': 'Estás en Auditorías. Sugiere preguntas de auditoría basadas en ISO 9001.',
+    'projects': 'Estás en Gestión de Proyectos. Analiza cronogramas y riesgos.',
+};
+
 const getContextFromPath = (path: string): string => {
-    if (path.includes('dashboard')) return 'Estás en el Dashboard Principal. Tienes visibilidad de los KPIs globales.';
-    if (path.includes('nc')) return 'Estás en el módulo de No Conformidades. Puedes ayudar a analizar causas raíz y redactar acciones correctivas.';
-    if (path.includes('forms')) return 'Estás en Formularios. Ayuda a verificar tolerancias y criterios de aceptación.';
-    if (path.includes('audits')) return 'Estás en Auditorías. Sugiere preguntas de auditoría basadas en ISO 9001.';
-    if (path.includes('projects')) return 'Estás en Gestión de Proyectos. Analiza cronogramas y riesgos.';
+    for (const key in LOCATION_MAP) {
+        if (path.includes(key)) return LOCATION_MAP[key];
+    }
     return 'Estás en el menú principal.';
 };
 
+
+
 const getSystemContext = (useSearch: boolean, currentPath: string, persona: AgentPersona = 'Global') => {
-    const baseContext = `Eres "Agente Calidad", el Sistema Inteligente de Alco. CONTEXTO ACTUAL: ${getContextFromPath(currentPath)}`;
+    const baseContext = `Eres "Agente Calidad", el Sistema Inteligente de Alco.CONTEXTO ACTUAL: ${getContextFromPath(currentPath)} `;
 
     const personaPrompts: Record<AgentPersona, string> = {
         Global: `
-        ROL: Coordinador General de Calidad.
-        OBJETIVO: Visión holística del sistema.
+ROL: Coordinador General de Calidad.
+    OBJETIVO: Visión holística del sistema.
         ESTILO: Formal, directivo y estratégico.
-        `,
+`,
         Ops: `
-        ROL: Asistente de Operaciones y Producción.
-        OBJETIVO: Resolver dudas técnicas inmediatas en planta.
+ROL: Asistente de Operaciones y Producción.
+    OBJETIVO: Resolver dudas técnicas inmediatas en planta.
         ESTILO: Práctico, breve y técnico. "Al grano".
-        COMPETENCIAS: Interpretación de Planos, Tolerancias, Maquinaria.
-        `,
+            COMPETENCIAS: Interpretación de Planos, Tolerancias, Maquinaria.
+`,
         QA: `
-        ROL: Auditor Senior de Calidad (QC/QA).
-        OBJETIVO: Detección rigurosa de desviaciones.
-        ESTILO: Analítico, basado en evidencia y normativa ISO 9001/ASTM.
-        `,
+ROL: Auditor Senior de Calidad(QC / QA).
+    OBJETIVO: Detección rigurosa de desviaciones.
+        ESTILO: Analítico, basado en evidencia y normativa ISO 9001 / ASTM.
+`,
         Project: `
-        ROL: Gestor de Proyectos (PM).
-        OBJETIVO: Control de cronograma y riesgos.
+ROL: Gestor de Proyectos(PM).
+    OBJETIVO: Control de cronograma y riesgos.
         ESTILO: Orientado a plazos y riesgos.
-        `,
+`,
         Supply: `
-        ROL: Analista de Proveedores y Compras.
-        OBJETIVO: Aseguramiento de calidad de insumos.
+ROL: Analista de Proveedores y Compras.
+    OBJETIVO: Aseguramiento de calidad de insumos.
         ESTILO: Negociador y detallista.
-        `
+`
     };
 
     return `
-    ${baseContext}
-    
-    TU IDENTIDAD ACTIVA: ${personaPrompts[persona]}
-    
-    CAPACIDADES GENERALES:
-    - ${useSearch ? 'ACCESO ONLINE ACTIVADO: Valida datos en tiempo real.' : 'MODO OFFLINE: Responde con tu base de conocimiento interna.'}
-    - MÉTODO DE RESPUESTA: Usa Markdown. Sé conciso. Si detectas riesgo, inicia con [ALERTA].
-    `;
+${baseContext}
+
+TU IDENTIDAD ACTIVA: ${personaPrompts[persona]}
+
+CAPACIDADES GENERALES:
+- ${useSearch ? 'ACCESO ONLINE ACTIVADO: Valida datos en tiempo real.' : 'MODO OFFLINE: Responde con tu base de conocimiento interna.'}
+- MÉTODO DE RESPUESTA: Usa Markdown.Sé conciso.Si detectas riesgo, inicia con[ALERTA].
+- IDIOMA: Responde SIEMPRE en Español, a menos que se solicite explícitamente otro idioma para una traducción.
+`;
 };
 
 const AgentHub: React.FC = () => {
     const { isAgentOpen, toggleAgent, activeDocument, setActiveDocument } = useAgent();
-    // const [isOpen, setIsOpen] = useState(false); // Replaced by context
+    // Use notification system
+    const { addNotification } = useNotification();
     const [mode, setMode] = useState<'text' | 'voice'>('text');
     const [useGoogleSearch, setUseGoogleSearch] = useState(true);
     const [activeAgent, setActiveAgent] = useState<AgentPersona>('Global');
@@ -123,12 +137,14 @@ const AgentHub: React.FC = () => {
     const outputAudioContext = useRef<AudioContext | null>(null);
     const outputNode = useRef<GainNode | null>(null);
     const sources = useRef<Set<AudioBufferSourceNode>>(new Set());
-    const sessionPromise = useRef<Promise<any> | null>(null);
+    const sessionPromise = useRef<Promise<any> | null>(null); // Kept for type compatibility but might change
     const streamRef = useRef<MediaStream | null>(null);
     const processorRef = useRef<ScriptProcessorNode | null>(null);
     const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [voiceStatus, setVoiceStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
+    const wsRef = useRef<WebSocket | null>(null); // For manual WebSocket
+
 
     useEffect(() => {
         if (isAgentOpen) {
@@ -158,7 +174,10 @@ const AgentHub: React.FC = () => {
         setIsProcessing(true);
 
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            if (!API_KEY) throw new Error("API_KEY_MISSING");
+            const genAI = new GoogleGenerativeAI(API_KEY);
+
+            // Prepare Prompt Parts
             const parts: any[] = [{ text: input || 'Analiza esta situación técnica.' }];
 
             // Add active document if present
@@ -176,37 +195,88 @@ const AgentHub: React.FC = () => {
                 parts.push({ inlineData: { data: attachedImage.data, mimeType: attachedImage.mime } });
             }
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-1.5-flash-001', // Standard stable version
-                contents: { parts },
-                config: {
-                    systemInstruction: getSystemContext(useGoogleSearch, location.pathname, activeAgent),
-                    tools: useGoogleSearch ? [{ googleSearch: {} }] : undefined
-                }
-            });
+            // System Instruction
+            const systemInstruction = getSystemContext(useGoogleSearch, location.pathname, activeAgent);
 
-            // Extract Grounding
-            const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-            if (chunks) {
-                const links = chunks.filter((c: any) => c.web).map((c: any) => ({
-                    title: c.web.title,
-                    uri: c.web.uri
-                }));
-                setGroundingSources(links);
+            let responseText = "";
+
+            try {
+                // Attempt 1: Gemini 1.5 Flash
+                const model = genAI.getGenerativeModel({
+                    model: "gemini-1.5-flash-001",
+                    systemInstruction: systemInstruction,
+                } as any);
+
+                // Implement a manual timeout since the GenAI SDK might hang on slow connections
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error("TIMEOUT")), 15000)
+                );
+
+                const result = await Promise.race([
+                    model.generateContent(parts),
+                    timeoutPromise
+                ]) as any;
+
+                const response = await result.response;
+                responseText = response.text();
+            } catch (err1: any) {
+                console.warn("Flash failed, trying Pro:", err1);
+
+                // Si el error fue un 429 o un Timeout, propagarlo inmediatamente sin reintentar con Pro (para no saturar más)
+                if (err1.message === "TIMEOUT" || err1?.status === 429 || err1?.message?.includes('429')) {
+                    throw err1;
+                }
+
+                // Attempt 2: Gemini 1.5 Pro (Fallback)
+                const model = genAI.getGenerativeModel({
+                    model: "gemini-1.5-pro-001",
+                    systemInstruction: systemInstruction,
+                } as any);
+
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error("TIMEOUT")), 25000) // Pro gets more time
+                );
+
+                const result = await Promise.race([
+                    model.generateContent(parts),
+                    timeoutPromise
+                ]) as any;
+
+                const response = await result.response;
+                responseText = response.text();
             }
 
             const agentMsg: AgentMessage = {
                 id: (Date.now() + 1).toString(),
                 role: 'agent',
-                content: response.text || 'He procesado tu solicitud.'
+                content: responseText || 'He procesado tu solicitud.'
             };
             setMessages(prev => [...prev, agentMsg]);
             setAttachedImage(null);
+
         } catch (error: any) {
             console.error("AI Error:", error);
-            const apiKeyPresent = !!process.env.API_KEY;
-            console.log("API Key present:", apiKeyPresent);
-            setMessages(prev => [...prev, { id: 'err', role: 'agent', content: `⚠️ Error de conexión: ${error.message || 'Desconocido'}. (Key Presente: ${apiKeyPresent ? 'SÍ' : 'NO'})` }]);
+
+            let userFriendlyMessage = `⚠️ **Error de Sistema**\n\nNo pude procesar la solicitud en este momento. \n\n*Detalle técnico:* ${error.message || 'Error desconocido'}`;
+
+            // Categorize errors for better UX
+            if (error.message === "API_KEY_MISSING") {
+                userFriendlyMessage = `🛑 **Configuración Incompleta**\n\nNo se ha configurado la llave de acceso a la Inteligencia Artificial (API Key). Por favor contacta al administrador del sistema.`;
+            } else if (error.message === "TIMEOUT") {
+                userFriendlyMessage = `⏱️ **Tiempo de Espera Agotado**\n\nLa red está inestable o los servidores de IA están lentos en este momento. Por favor, revisa tu conexión e intenta de nuevo en unos segundos.`;
+                addNotification({ type: 'warning', title: 'Red Inestable', message: 'La solicitud a la IA tomó demasiado tiempo.' });
+            } else if (error?.status === 429 || error?.message?.includes('429') || error?.message?.includes('Quota')) {
+                userFriendlyMessage = `⏳ **Servidores Saturados**\n\nEstoy procesando demasiadas solicitudes en todos los frentes operacionales en este instante (Error 429/Cuota Excedida). Por favor espera un minuto e inténtalo de nuevo.`;
+                addNotification({ type: 'warning', title: 'Agente Ocupado', message: 'Cuota de peticiones excedida temporalmente.' });
+            } else if (!navigator.onLine || error?.message?.includes('fetch')) {
+                userFriendlyMessage = `🔌 **Sin Conexión a Internet**\n\nParece que has perdido la conexión. Necesito internet para mis capacidades de IA.`;
+            }
+
+            setMessages(prev => [...prev, {
+                id: 'err-' + Date.now(),
+                role: 'agent',
+                content: userFriendlyMessage
+            }]);
         } finally {
             setIsProcessing(false);
         }
@@ -214,14 +284,26 @@ const AgentHub: React.FC = () => {
 
     // Voice logic
     const stopVoiceSession = () => {
+        if (wsRef.current) {
+            wsRef.current.close();
+            wsRef.current = null;
+        }
         sources.current?.forEach(source => { try { source.stop(); } catch (e) { } });
         sources.current?.clear();
-        streamRef.current?.getTracks().forEach(track => track.stop());
-        processorRef.current?.disconnect();
-        sourceRef.current?.disconnect();
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+        }
+        if (processorRef.current) {
+            processorRef.current.disconnect();
+            processorRef.current = null;
+        }
+        if (sourceRef.current) {
+            sourceRef.current.disconnect();
+            sourceRef.current = null;
+        }
         inputAudioContext.current?.close().catch(() => { });
         outputAudioContext.current?.close().catch(() => { });
-        sessionPromise.current = null;
         setVoiceStatus('disconnected');
         setIsSpeaking(false);
     };
@@ -229,9 +311,12 @@ const AgentHub: React.FC = () => {
     const startVoiceSession = async () => {
         try {
             setVoiceStatus('connecting');
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            if (!API_KEY) throw new Error("API Key no configurada");
+
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             streamRef.current = stream;
+
+            // Audio Contexts
             const ctxIn = new (window.AudioContext || (window as any).webkitAudioContext)();
             const ctxOut = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
             inputAudioContext.current = ctxIn;
@@ -239,67 +324,117 @@ const AgentHub: React.FC = () => {
             outputNode.current = ctxOut.createGain();
             outputNode.current.connect(ctxOut.destination);
 
-            let personaInstruction = getSystemContext(false, location.pathname, activeAgent);
+            // Manual WebSocket Connection for Live API
+            const host = "generativelanguage.googleapis.com";
+            const url = `wss://${host}/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${API_KEY}`;
+            const ws = new WebSocket(url);
+            wsRef.current = ws;
 
-            sessionPromise.current = ai.live.connect({
-                model: 'gemini-2.5-flash-native-audio-preview-12-2025',
-                config: {
-                    responseModalities: [Modality.AUDIO],
-                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
-                    systemInstruction: personaInstruction,
-                },
-                callbacks: {
-                    onopen: () => {
-                        setVoiceStatus('connected');
-                        const source = ctxIn.createMediaStreamSource(stream);
-                        const script = ctxIn.createScriptProcessor(4096, 1, 1);
-                        script.onaudioprocess = (e) => {
-                            const inputData = e.inputBuffer.getChannelData(0);
-                            const l = inputData.length;
-                            const int16 = new Int16Array(l);
-                            for (let i = 0; i < l; i++) { int16[i] = inputData[i] * 32768; }
-                            sessionPromise.current?.then(s => s.sendRealtimeInput({
-                                media: { data: arrayBufferToBase64(int16.buffer), mimeType: 'audio/pcm;rate=16000' }
-                            }));
-                        };
-                        source.connect(script);
-                        script.connect(ctxIn.destination);
-                        processorRef.current = script;
-                        sourceRef.current = source;
-                    },
-                    onmessage: async (msg: LiveServerMessage) => {
-                        const base64 = msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-                        if (base64) {
-                            setIsSpeaking(true);
-                            const audioBuffer = await decodeAudioData(base64ToUint8Array(base64), ctxOut, 24000, 1);
-                            const source = ctxOut.createBufferSource();
-                            source.buffer = audioBuffer;
-                            source.connect(outputNode.current!);
-                            nextStartTime.current = Math.max(nextStartTime.current, ctxOut.currentTime);
-                            source.start(nextStartTime.current);
-                            nextStartTime.current += audioBuffer.duration;
-                            sources.current.add(source);
-                            source.onended = () => {
-                                sources.current.delete(source);
-                                if (sources.current.size === 0) setIsSpeaking(false);
-                            };
+            ws.onopen = () => {
+                setVoiceStatus('connected');
+                // Initial Setup Message
+                const setupMsg = {
+                    setup: {
+                        model: "models/gemini-2.0-flash-exp",
+                        generationConfig: {
+                            responseModalities: ["AUDIO"],
+                            speechConfig: {
+                                voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } }
+                            }
+                        },
+                        systemInstruction: {
+                            parts: [{ text: getSystemContext(false, location.pathname, activeAgent) }]
                         }
-                    },
-                    onerror: (e) => console.error(e),
-                    onclose: () => stopVoiceSession()
+                    }
+                };
+                ws.send(JSON.stringify(setupMsg));
+
+                // Start Audio Processing
+                const source = ctxIn.createMediaStreamSource(stream);
+                const script = ctxIn.createScriptProcessor(4096, 1, 1);
+
+                script.onaudioprocess = (e) => {
+                    const inputData = e.inputBuffer.getChannelData(0);
+                    const l = inputData.length;
+                    const int16 = new Int16Array(l);
+                    for (let i = 0; i < l; i++) { int16[i] = inputData[i] * 32768; }
+
+                    // Send Realtime Input
+                    const audioMsg = {
+                        realtime_input: {
+                            media_chunks: [{
+                                mime_type: "audio/pcm;rate=16000",
+                                data: arrayBufferToBase64(int16.buffer)
+                            }]
+                        }
+                    };
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify(audioMsg));
+                    }
+                };
+
+                source.connect(script);
+                script.connect(ctxIn.destination);
+                processorRef.current = script;
+                sourceRef.current = source;
+            };
+
+            ws.onmessage = async (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    // Check for server_content with model_turn and parts
+                    const base64 = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
+                    if (base64) {
+                        setIsSpeaking(true);
+                        const audioBuffer = await decodeAudioData(base64ToUint8Array(base64), ctxOut, 24000, 1);
+                        const source = ctxOut.createBufferSource();
+                        source.buffer = audioBuffer;
+                        source.connect(outputNode.current!);
+                        nextStartTime.current = Math.max(nextStartTime.current, ctxOut.currentTime);
+                        source.start(nextStartTime.current);
+                        nextStartTime.current += audioBuffer.duration;
+                        sources.current.add(source);
+                        source.onended = () => {
+                            sources.current.delete(source);
+                            if (sources.current.size === 0) setIsSpeaking(false);
+                        };
+                    }
+                } catch (e) {
+                    console.error("WS Message Parse Error", e);
                 }
-            });
+            };
+
+            ws.onerror = (e) => {
+                console.error("WebSocket Error:", e);
+                setVoiceStatus('disconnected');
+                addNotification({
+                    type: 'error',
+                    title: 'Error de Conexión',
+                    message: 'Falló la conexión de voz. Verifique su API Key o permisos de red.'
+                });
+            };
+
+            ws.onclose = () => {
+                stopVoiceSession();
+            };
+
         } catch (err) {
+            console.error("Voice Session Error:", err);
             setVoiceStatus('disconnected');
+            setMessages(prev => [...prev, {
+                id: 'err_voice',
+                role: 'agent',
+                content: `⚠️ **Error de Voz**\n\nNo se pudo conectar con el modo Live`
+            }]);
         }
     };
 
     return (
         <div className="fixed bottom-8 right-8 z-[1000] flex flex-col items-end gap-4">
             {isAgentOpen && (
-                <div className="bg-white dark:bg-[#1e1e2d] w-[400px] h-[600px] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/5 flex flex-col overflow-hidden animate-fade-in-up origin-bottom-right">
+                <div className="bg-white dark:bg-[#111827] w-[400px] h-[600px] rounded-3xl shadow-2xl border border-slate-200/80 dark:border-white/[0.06] flex flex-col overflow-hidden animate-fade-in-up origin-bottom-right backdrop-blur-xl">
                     {/* HEADER */}
-                    <div className="p-4 bg-gradient-to-r from-[#5d5fef] to-[#4f46e5] space-y-3">
+                    <div className="p-4 bg-gradient-to-r from-indigo-600 to-violet-600 space-y-3">
                         <div className="flex justify-between items-center text-white">
                             <div className="flex items-center gap-3">
                                 <div className="bg-white/20 p-2 rounded-xl backdrop-blur-md text-yellow-300">
@@ -320,7 +455,7 @@ const AgentHub: React.FC = () => {
                                 </button>
                                 <button
                                     onClick={() => setMode(mode === 'text' ? 'voice' : 'text')}
-                                    className={`p-2 rounded-lg transition-all ${mode === 'voice' ? 'bg-white text-[#5d5fef] shadow-lg' : 'text-white/70 hover:bg-white/10'}`}
+                                    className={`p-2 rounded-lg transition-all ${mode === 'voice' ? 'bg-white text-indigo-600 shadow-lg' : 'text-white/70 hover:bg-white/10'}`}
                                 >
                                     <MicrophoneIcon />
                                 </button>
@@ -335,7 +470,7 @@ const AgentHub: React.FC = () => {
                                 <button
                                     key={p}
                                     onClick={() => setActiveAgent(p)}
-                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all whitespace-nowrap ${activeAgent === p ? 'bg-white text-[#5d5fef] shadow-md' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all whitespace-nowrap ${activeAgent === p ? 'bg-white text-indigo-600 shadow-md' : 'bg-white/10 text-white hover:bg-white/20'}`}
                                 >
                                     {p === 'Global' ? '🧠 General' : p === 'Ops' ? '🏭 Ops' : p === 'QA' ? '🛡️ Calidad' : p === 'Project' ? '📅 Proyectos' : '📦 Compras'}
                                 </button>
@@ -361,12 +496,12 @@ const AgentHub: React.FC = () => {
                     )}
 
                     {/* BODY */}
-                    <div className="flex-grow p-4 overflow-y-auto space-y-4 custom-scrollbar bg-slate-50 dark:bg-[#151520]">
+                    <div className="flex-grow p-4 overflow-y-auto space-y-4 custom-scrollbar bg-slate-50 dark:bg-[#0a0e18]">
                         {mode === 'text' ? (
                             <>
                                 {messages.map((m) => (
                                     <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in`}>
-                                        <div className={`max-w-[90%] p-3.5 rounded-2xl text-sm leading-relaxed shadow-sm ${m.role === 'user' ? 'bg-[#5d5fef] text-white rounded-tr-sm' : 'bg-white dark:bg-[#252535] text-slate-700 dark:text-slate-200 rounded-tl-sm border border-slate-100 dark:border-white/5'}`}>
+                                        <div className={`max-w-[90%] p-3.5 rounded-2xl text-sm leading-relaxed shadow-sm ${m.role === 'user' ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-tr-sm' : 'bg-white dark:bg-white/[0.04] text-slate-700 dark:text-slate-200 rounded-tl-sm border border-slate-100 dark:border-white/[0.06]'}`}>
                                             <div className="prose dark:prose-invert prose-xs">
                                                 <ReactMarkdown>{m.content}</ReactMarkdown>
                                             </div>
@@ -375,10 +510,10 @@ const AgentHub: React.FC = () => {
                                 ))}
                                 {isProcessing && (
                                     <div className="flex justify-start">
-                                        <div className="bg-white dark:bg-[#252535] p-4 rounded-3xl rounded-tl-sm border border-slate-100 dark:border-white/5 flex gap-2 items-center">
-                                            <div className="w-2 h-2 bg-[#5d5fef] rounded-full animate-bounce"></div>
-                                            <div className="w-2 h-2 bg-[#5d5fef] rounded-full animate-bounce delay-75"></div>
-                                            <div className="w-2 h-2 bg-[#5d5fef] rounded-full animate-bounce delay-150"></div>
+                                        <div className="bg-white dark:bg-white/[0.04] p-4 rounded-3xl rounded-tl-sm border border-slate-100 dark:border-white/[0.06] flex gap-2 items-center">
+                                            <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce"></div>
+                                            <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce delay-75"></div>
+                                            <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce delay-150"></div>
                                         </div>
                                     </div>
                                 )}
@@ -406,9 +541,9 @@ const AgentHub: React.FC = () => {
                         ) : (
                             <div className="h-full flex flex-col items-center justify-center text-center space-y-8">
                                 <div className="relative">
-                                    <div className={`absolute inset-0 bg-[#5d5fef] rounded-full opacity-20 blur-xl transition-all duration-1000 ${isSpeaking ? 'scale-150' : 'scale-100'}`}></div>
-                                    <div className={`relative w-24 h-24 rounded-full border-4 flex items-center justify-center transition-all duration-300 ${isSpeaking ? 'border-[#5d5fef] bg-indigo-50 dark:bg-white/10 scale-110' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-[#252535]'}`}>
-                                        <div className={`text-3xl ${isSpeaking ? 'text-[#5d5fef] animate-pulse' : 'text-slate-300 dark:text-slate-600'}`}>
+                                    <div className={`absolute inset-0 bg-indigo-500 rounded-full opacity-20 blur-xl transition-all duration-1000 ${isSpeaking ? 'scale-150' : 'scale-100'}`}></div>
+                                    <div className={`relative w-24 h-24 rounded-full border-4 flex items-center justify-center transition-all duration-300 ${isSpeaking ? 'border-indigo-500 bg-indigo-50 dark:bg-white/10 scale-110' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.04]'}`}>
+                                        <div className={`text-3xl ${isSpeaking ? 'text-indigo-500 animate-pulse' : 'text-slate-300 dark:text-slate-600'}`}>
                                             <MicrophoneIcon />
                                         </div>
                                     </div>
@@ -417,7 +552,7 @@ const AgentHub: React.FC = () => {
                                     <p className="text-lg font-bold dark:text-white">{isSpeaking ? 'Escuchando Voz...' : 'Modo Conversación'}</p>
                                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-[200px] mx-auto">Habla naturalmente. El Agente puede escucharte y responder con voz de alta fidelidad.</p>
                                 </div>
-                                <button onClick={voiceStatus === 'connected' ? stopVoiceSession : startVoiceSession} className={`px-6 py-3 rounded-full font-bold text-xs shadow-lg transition-transform active:scale-95 ${voiceStatus === 'connected' ? 'bg-rose-500 text-white' : 'bg-[#5d5fef] text-white hover:bg-[#4f46e5]'}`}>
+                                <button onClick={voiceStatus === 'connected' ? stopVoiceSession : startVoiceSession} className={`px-6 py-3 rounded-full font-bold text-xs shadow-lg transition-transform active:scale-95 ${voiceStatus === 'connected' ? 'bg-rose-500 text-white' : 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:shadow-indigo-500/40'}`}>
                                     {voiceStatus === 'connected' ? 'Desconectar Voz' : 'Iniciar Sesión de Voz'}
                                 </button>
                             </div>
@@ -427,7 +562,7 @@ const AgentHub: React.FC = () => {
 
                     {/* FOOTER */}
                     {mode === 'text' && (
-                        <div className="p-3 bg-white dark:bg-[#1e1e2d] border-t border-slate-100 dark:border-white/5">
+                        <div className="p-3 bg-white dark:bg-[#111827] border-t border-slate-100 dark:border-white/[0.04]">
                             {attachedImage && (
                                 <div className="mb-2 flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-700 dark:text-indigo-300">
                                     <CameraIcon /> Imagen adjunta
@@ -435,18 +570,18 @@ const AgentHub: React.FC = () => {
                                 </div>
                             )}
                             <div className="flex gap-2 items-center">
-                                <button onClick={() => fileInputRef.current?.click()} className="p-2.5 text-slate-400 hover:text-[#5d5fef] bg-slate-50 dark:bg-white/5 rounded-xl transition-colors">
+                                <button onClick={() => fileInputRef.current?.click()} className="p-2.5 text-slate-400 hover:text-indigo-500 bg-slate-50 dark:bg-white/[0.04] rounded-xl transition-colors">
                                     <CameraIcon />
                                 </button>
                                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
                                 <input
-                                    className="flex-grow bg-slate-50 dark:bg-[#252535] border-transparent focus:border-[#5d5fef] focus:ring-0 rounded-xl px-4 py-2.5 text-sm transition-all dark:text-white placeholder:text-slate-400"
+                                    className="flex-grow bg-slate-50 dark:bg-white/[0.04] border border-transparent focus:border-indigo-500/40 focus:ring-0 rounded-xl px-4 py-2.5 text-sm transition-all dark:text-white placeholder:text-slate-400"
                                     placeholder="Escribe tu consulta..."
                                     value={input}
                                     onChange={e => setInput(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
                                 />
-                                <button onClick={handleSendMessage} disabled={isProcessing || (!input && !attachedImage)} className="p-3 bg-[#5d5fef] text-white rounded-xl disabled:opacity-50 hover:bg-[#4f46e5] shadow-lg shadow-indigo-500/20 transition-all active:scale-95">
+                                <button onClick={handleSendMessage} disabled={isProcessing || (!input && !attachedImage)} className="p-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-xl disabled:opacity-50 hover:shadow-indigo-500/30 shadow-lg shadow-indigo-500/20 transition-all active:scale-95">
                                     <ChevronRightIcon />
                                 </button>
                             </div>
@@ -460,7 +595,7 @@ const AgentHub: React.FC = () => {
                 onClick={() => toggleAgent()}
                 className={`
                     w-14 h-14 rounded-full flex items-center justify-center text-xl shadow-2xl transition-all duration-300 z-50
-                    ${isAgentOpen ? 'bg-slate-800 text-white rotate-90 scale-90' : 'bg-[#5d5fef] text-white hover:scale-110 hover:shadow-indigo-500/50 animate-bounce-subtle'}
+                    ${isAgentOpen ? 'bg-slate-800 text-white rotate-90 scale-90' : 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:scale-110 hover:shadow-indigo-500/50 animate-bounce-subtle'}
                 `}
             >
                 {isAgentOpen ? <XCircleIcon /> : <RobotIcon />}

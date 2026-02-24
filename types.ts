@@ -7,6 +7,7 @@ export interface User {
     username: string;
     role: string;
     password?: string;
+    organizationId?: string;
 }
 
 export interface NavItem {
@@ -49,7 +50,7 @@ export type DocumentStatus = 'Borrador' | 'En Revisión' | 'Aprobado' | 'Obsolet
 export type DocumentCategory = 'Manuales' | 'Instructivos' | 'Planos' | 'Fichas Técnicas' | 'Registros';
 
 export interface Document {
-    id: number;
+    id: string;
     name: string;
     code: string;
     category: DocumentCategory;
@@ -77,6 +78,7 @@ export interface FiveWhys {
     why5: string;
     rootCause: string;
     aiSuggestedRootCause?: string;
+    evidence_urls?: string[];
 }
 
 export interface CAPAAction {
@@ -85,6 +87,7 @@ export interface CAPAAction {
     responsible: string;
     dueDate: string;
     completed: boolean;
+    type: 'Correctiva' | 'Preventiva' | 'Mejora';
 }
 
 export interface NonConformity {
@@ -226,8 +229,9 @@ export interface Label {
 }
 
 export interface UserAvatar {
-    id: string;
-    initials: string;
+    id?: string;
+    user_id: string;
+    user_initials: string;
 }
 
 export interface Attachment {
@@ -266,6 +270,10 @@ export interface Task {
     checklist?: ChecklistItem[];
     assetId?: string;
     type?: MaintenanceType;
+    column_id?: string;
+    createdAt?: string;
+    is_template?: boolean;
+    cover_color?: string;
 }
 
 export interface Column {
@@ -342,4 +350,138 @@ export interface LineRiskProfile {
     riskScore: number;
     topRiskFactor: string;
     status: 'Safe' | 'Warning' | 'Critical';
+}
+
+// --- Mensajería Centralizada (User-Centric y Tiempo Real) ---
+export type ConversationType = 'direct' | 'group';
+export type MessageContentType = 'text' | 'file' | 'image' | 'system';
+export type MessageReadStatus = 'sent' | 'delivered' | 'read';
+
+export interface UserSession {
+    userId: string;
+    socketId?: string;
+    isOnline: boolean;
+    lastActivity: string;
+    deviceInfo?: string;
+}
+
+export interface ChatParticipant {
+    userId: string;
+    username?: string; // Derivado para no hacer JOIN siempre
+    role?: string;     // admin, member
+    isOnline?: boolean;
+    isTyping?: boolean;
+    avatar?: string;
+    lastReadAt?: string;
+}
+
+export interface ChatMessage {
+    id: string;
+    conversationId: string;
+    senderId: string;
+    senderName?: string;
+    senderAvatar?: string;
+    content: string;
+    type: MessageContentType;
+    createdAt: string;
+    editedAt?: string;
+    deletedAt?: string;
+    readStatus: MessageReadStatus;
+    replyTo?: {
+        id: string;
+        senderName: string;
+        content: string;
+    };
+    fileName?: string;
+    fileUrl?: string;
+    fileSize?: number;
+}
+
+export interface Conversation {
+    id: string;
+    type: ConversationType;
+    organizationId: string;
+    createdBy: string;
+    title?: string;
+    avatar?: string;
+    participants: ChatParticipant[];
+    lastMessage?: ChatMessage;
+    unreadCount: number;
+    linkedModule?: 'nc' | 'audit' | 'document' | 'project';
+    linkedId?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+// --- Sistema Unificado de Notificaciones ---
+
+export type EventType =
+    | 'NC_CREATED' | 'NC_STATUS_CHANGED' | 'NC_CLOSED'
+    | 'CLAIM_CREATED' | 'CLAIM_STATUS_CHANGED' | 'CLAIM_RESOLVED'
+    | 'AUDIT_CREATED' | 'AUDIT_SCHEDULED' | 'AUDIT_STATUS_CHANGED' | 'AUDIT_COMPLETED'
+    | 'CALIBRATION_CREATED' | 'CALIBRATION_STATUS_CHANGED' | 'CALIBRATION_DUE' | 'CALIBRATION_EXPIRED'
+    | 'FORM_SUBMITTED' | 'INSPECTION_CREATED' | 'INSPECTION_COMPLETED'
+    | 'DOCUMENT_UPLOADED' | 'DOCUMENT_APPROVED'
+    | 'EQUIPMENT_DELIVERED' | 'EQUIPMENT_DECOMMISSIONED'
+    | 'INSTRUCTION_APPROVED'
+    | 'CUSTOM';
+
+export type NotificationPriority = 'low' | 'normal' | 'high' | 'critical';
+
+export interface SystemEvent {
+    event_type: EventType;
+    module: string;
+    reference_id: string;
+    triggered_by: string;
+    timestamp: string;
+    payload: Record<string, any>;
+}
+
+export interface InternalNotification {
+    id: string;
+    userId: string;
+    title: string;
+    message: string;
+    referenceId?: string;
+    moduleName?: string;
+    eventType?: EventType;
+    priority: NotificationPriority;
+    isRead: boolean;
+    createdAt: string;
+}
+
+export interface AutomationRule {
+    id: string;
+    name: string;
+    description: string;
+    eventType: EventType;
+    moduleName: string;
+    conditionJson: Record<string, any>;
+    actionsJson: {
+        send_email: boolean;
+        create_internal_notification: boolean;
+        create_chat_thread: boolean;
+        notification_title?: string;
+        notification_message?: string;
+        email_subject?: string;
+        email_body?: string;
+    };
+    recipientsJson: string[];
+    isActive: boolean;
+    createdBy?: string;
+    createdAt: string;
+}
+
+export interface EmailLog {
+    id: string;
+    moduleName?: string;
+    referenceId?: string;
+    recipient: string;
+    subject: string;
+    body?: string;
+    status: 'pending' | 'sent' | 'failed' | 'queued';
+    errorMessage?: string;
+    triggeredBy?: string;
+    ruleId?: string;
+    createdAt: string;
 }

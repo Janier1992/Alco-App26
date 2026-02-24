@@ -13,14 +13,16 @@ interface BreadcrumbsProps {
 
 const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ crumbs }) => (
     <nav aria-label="breadcrumb">
-        <ol className="flex list-none p-0 text-sm text-slate-500 dark:text-slate-400">
+        <ol className="flex list-none p-0 text-sm text-slate-400 dark:text-slate-500">
             {crumbs.map((crumb, index) => (
                 <li key={index} className="flex items-center">
-                    {index > 0 && <span className="mx-2">/</span>}
+                    {index > 0 && (
+                        <i className="fas fa-chevron-right text-[7px] text-slate-300 dark:text-slate-600 mx-2.5"></i>
+                    )}
                     {crumb.path ? (
-                        <Link to={crumb.path} className="text-sky-700 dark:text-sky-400 hover:underline">{crumb.label}</Link>
+                        <Link to={crumb.path} className="text-indigo-500 dark:text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors font-bold text-xs uppercase tracking-wider">{crumb.label}</Link>
                     ) : (
-                        <span className="font-medium text-slate-700 dark:text-slate-300">{crumb.label}</span>
+                        <span className="font-black text-xs text-slate-700 dark:text-slate-300 uppercase tracking-wider">{crumb.label}</span>
                     )}
                 </li>
             ))}

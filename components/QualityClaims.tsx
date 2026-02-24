@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { GoogleGenAI } from "@google/genai";
 import Breadcrumbs from './Breadcrumbs';
 import {
     RobotIcon, PlusIcon, SaveIcon, TrashIcon, EditIcon,
@@ -8,8 +7,9 @@ import {
 import type { QualityDocument } from '../types';
 import { useNotification } from './NotificationSystem';
 import ReactMarkdown from 'react-markdown';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../insforgeClient';
 import BulkUploadButton from './BulkUploadButton';
+import { EmailService } from '../services/NotificationCoreService';
 
 const QualityClaims: React.FC = () => {
     const { addNotification } = useNotification();
@@ -64,13 +64,40 @@ const QualityClaims: React.FC = () => {
         if (!formData.description) return addNotification({ type: 'warning', title: 'SIN CONTEXTO', message: 'Describa el problema para redactar el informe.' });
         setIsGenerating(true);
         try {
-            const apiKey = import.meta.env.VITE_GOOGLE_API_KEY || 'YOUR_API_KEY';
-            const ai = new GoogleGenAI({ apiKey });
-            const prompt = `Actúa como Director de Calidad de AlcoSAS. Redacta un ${formData.docType} formal para el cliente ${formData.client} en la obra ${formData.project}. Descripción: "${formData.description}". Cita NTC 2409 y estándares Qualicoat. Propón 3 recomendaciones técnicas. Usa Markdown profesional.`;
-            const response = await ai.models.generateContent({ model: 'gemini-2.0-flash-exp', contents: prompt });
-            setFormData(prev => ({ ...prev, officialContent: response.text }));
+            const { analyzeClaim } = await import('../utils/aiService');
+
+            const analysis = await analyzeClaim(`
+                Cliente: ${formData.client}. 
+                Proyecto: ${formData.project}. 
+                Asunto: ${formData.docType}.
+                Descripción: ${formData.description}
+            `);
+
+            if (!analysis) throw new Error('No se pudo generar el análisis.');
+
+            const markdownReport = `
+### 🤖 Análisis de Inteligencia Artificial
+
+**Clasificación**: ${analysis.category || 'General'}
+**Severidad Detectada**: ${analysis.severity || 'Media'}
+
+---
+### 📝 Respuesta Sugerida
+${analysis.suggestedResponse}
+
+---
+### ✅ Pasos Recomendados
+${analysis.actionItems?.map((item: string) => `- ${item}`).join('\n') || 'Revisar manual de calidad.'}
+            `;
+
+            setFormData(prev => ({
+                ...prev,
+                officialContent: markdownReport,
+                priority: analysis.severity as any || prev.priority
+            }));
+
             addNotification({ type: 'success', title: 'REDACCIÓN IA COMPLETA', message: 'Informe técnico generado con éxito.' });
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
             addNotification({ type: 'error', title: 'FALLO TÉCNICO', message: 'No se pudo conectar con los motores de redacción.' });
         } finally {
@@ -112,6 +139,26 @@ const QualityClaims: React.FC = () => {
 
             if (error) throw error;
 
+            if (formData.id) {
+                await EmailService.send({
+                    to: 'calidad@alco.com',
+                    subject: `Estado de Reclamo Actualizado: ${formData.client}`,
+                    body: `El estado del reclamo ha cambiado a: ${formData.status}.\nAsunto: ${formData.subject}`,
+                    moduleName: 'quality-claims',
+                    referenceId: formData.id,
+                    triggeredBy: 'system'
+                });
+            } else {
+                await EmailService.send({
+                    to: 'calidad@alco.com',
+                    subject: `Nuevo Reclamo Registrado: ${formData.client}`,
+                    body: `Se ha ingresado un nuevo reclamo en el sistema.\nPrioridad: ${formData.priority}\nAsunto: ${formData.subject}`,
+                    moduleName: 'quality-claims',
+                    referenceId: formData.subject || 'Nuevo Reclamo',
+                    triggeredBy: 'system'
+                });
+            }
+
             addNotification({ type: 'success', title: 'GESTIÓN GUARDADA', message: `Registro actualizado en base de datos.` });
             if (!formData.id) {
                 // Return to list if new
@@ -119,9 +166,13 @@ const QualityClaims: React.FC = () => {
             }
             fetchClaims(); // Refresh list
 
-        } catch (error) {
-            console.error(error);
-            addNotification({ type: 'error', title: 'Error', message: 'No se pudo guardar el registro.' });
+        } catch (error: any) {
+            console.error("Save Error:", error);
+            addNotification({
+                type: 'error',
+                title: 'Error de Guardado',
+                message: error.message || 'Error desconocido al guardar.'
+            });
         }
     };
 

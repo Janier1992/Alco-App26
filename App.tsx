@@ -2,24 +2,28 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import * as rr from 'react-router-dom';
 const { HashRouter, Routes, Route, Outlet, Navigate, useLocation } = rr;
-import LoginPage from './components/LoginPage';
 import Sidebar from './components/Sidebar';
-import Dashboard from './components/Dashboard';
 import ReloadPrompt from './components/ReloadPrompt';
-import Forms from './components/Forms';
-import Library from './components/Library';
-import Indicators from './components/Indicators';
-import Reports from './components/Reports';
-import Audits from './components/Audits';
-import NonConformities from './components/NonConformities';
-import Metrology from './components/Metrology';
-import MetrologyReplacement from './components/MetrologyReplacement';
-import Calibration from './components/Calibration';
-import AgentHub from './components/AgentHub';
-import Installations from './components/Installations';
-import Projects from './components/Projects';
-import Maintenance from './components/Maintenance';
-import QualityClaims from './components/QualityClaims';
+import PageLoader from './components/PageLoader';
+
+// Lazy Load Pages
+const LoginPage = React.lazy(() => import('./components/LoginPage'));
+const Dashboard = React.lazy(() => import('./components/Dashboard'));
+const Forms = React.lazy(() => import('./components/Forms'));
+const Library = React.lazy(() => import('./components/Library'));
+const Indicators = React.lazy(() => import('./components/Indicators'));
+const Reports = React.lazy(() => import('./components/Reports'));
+const Audits = React.lazy(() => import('./components/Audits'));
+const NonConformities = React.lazy(() => import('./components/NonConformities'));
+const Metrology = React.lazy(() => import('./components/Metrology'));
+const MetrologyReplacement = React.lazy(() => import('./components/MetrologyReplacement'));
+const Calibration = React.lazy(() => import('./components/Calibration'));
+const AgentHub = React.lazy(() => import('./components/AgentHub'));
+const Projects = React.lazy(() => import('./components/Projects'));
+const Maintenance = React.lazy(() => import('./components/Maintenance'));
+const QualityClaims = React.lazy(() => import('./components/QualityClaims'));
+const AdminSettings = React.lazy(() => import('./components/AdminSettings'));
+const Messaging = React.lazy(() => import('./components/Messaging'));
 
 
 import type { User, NavItem } from './types';
@@ -28,47 +32,51 @@ import { VALID_USERS } from './users';
 import { ThemeProvider, useTheme } from './components/ThemeContext';
 import { NotificationProvider } from './components/NotificationSystem';
 import { AgentProvider } from './components/AgentContext';
+import { ConfirmDialogProvider } from './components/ConfirmDialog';
+import { MessagingProvider } from './components/MessagingContext';
 
 const Header: React.FC<{ user: User; onLogout: () => void; onToggleSidebar: () => void }> = ({ user, onLogout, onToggleSidebar }) => {
     const [isUserMenuOpen, setUserMenuOpen] = useState(false);
     const { theme, toggleTheme } = useTheme();
 
     return (
-        <header className="bg-white dark:bg-alco-surface border-b border-slate-200 dark:border-white/5 p-4 flex justify-between items-center z-40 transition-all duration-300 flex-shrink-0">
-            <div className="flex items-center">
-                <button onClick={onToggleSidebar} className="text-slate-400 hover:text-[#5d5fef] lg:hidden mr-4">
+        <header className="bg-white/80 dark:bg-[#0a0e18]/80 backdrop-blur-lg border-b border-slate-200/80 dark:border-white/[0.04] px-4 py-3 flex justify-between items-center z-40 transition-all duration-300 flex-shrink-0">
+            <div className="flex items-center gap-3">
+                <button onClick={onToggleSidebar} className="text-slate-400 hover:text-indigo-500 lg:hidden mr-1 transition-colors">
                     <Bars3Icon />
                 </button>
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 bg-[#5d5fef] rounded-lg flex items-center justify-center text-white text-xs font-black shadow-[0_0_15px_rgba(93,95,239,0.3)]">C</div>
-                    <h1 className="text-lg font-black text-slate-900 dark:text-white hidden sm:block uppercase tracking-tighter">PROYECTOS <span className="text-[#5d5fef]">CALIDAD</span></h1>
+                {/* Command Palette Search Bar */}
+                <div className="hidden md:flex items-center gap-2.5 px-4 py-2 bg-slate-100/80 dark:bg-white/[0.04] rounded-xl text-sm text-slate-400 border border-slate-200/60 dark:border-white/[0.06] cursor-pointer hover:border-indigo-500/30 hover:bg-slate-50 dark:hover:bg-white/[0.06] transition-all w-[280px] lg:w-[340px] group">
+                    <i className="fas fa-search text-xs text-slate-300 dark:text-slate-500 group-hover:text-indigo-400 transition-colors"></i>
+                    <span className="text-xs font-medium text-slate-400">Buscar inspección, NC, documento...</span>
+                    <kbd className="ml-auto hidden lg:flex items-center gap-1 px-1.5 py-0.5 bg-white dark:bg-white/[0.06] rounded text-[9px] font-bold text-slate-300 dark:text-slate-500 border border-slate-200 dark:border-white/[0.06]">
+                        <span className="text-[10px]">⌘</span>K
+                    </kbd>
                 </div>
             </div>
-            <div className="flex items-center gap-1 sm:gap-4">
+            <div className="flex items-center gap-2 sm:gap-3">
                 <button
                     onClick={toggleTheme}
-                    className="p-2.5 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 hover:text-[#5d5fef] hover:bg-slate-200 dark:hover:bg-white/10 transition-all border border-slate-200 dark:border-white/5"
+                    className="p-2 rounded-xl bg-slate-100/80 dark:bg-white/[0.04] text-slate-400 dark:text-slate-500 hover:text-indigo-500 hover:bg-slate-200/80 dark:hover:bg-white/[0.08] transition-all border border-slate-200/60 dark:border-white/[0.06]"
                     title={theme === 'dark' ? "Cambiar a Modo Claro" : "Cambiar a Modo Oscuro"}
                 >
                     {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
                 </button>
 
-                <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-white/5 rounded-full text-[10px] font-black text-slate-500 dark:text-[#a1a1aa] uppercase tracking-widest border border-slate-200 dark:border-white/5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#5d5fef]"></span> {theme === 'dark' ? 'Modo Oscuro' : 'Modo Claro'}
-                </div>
-
                 <div className="relative">
-                    <button onClick={() => setUserMenuOpen(!isUserMenuOpen)} className="flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-white/5 p-1 px-3 rounded-xl transition-all border border-transparent hover:border-slate-200 dark:border-white/5">
-                        <UserCircleIcon className="text-slate-400" />
+                    <button onClick={() => setUserMenuOpen(!isUserMenuOpen)} className="flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-white/[0.04] p-1.5 px-3 rounded-xl transition-all border border-transparent hover:border-slate-200/80 dark:hover:border-white/[0.06]">
+                        <div className="w-7 h-7 bg-gradient-to-tr from-indigo-600 to-violet-500 rounded-lg flex items-center justify-center text-white text-[10px] font-black shadow-sm">
+                            {user.username?.charAt(0)?.toUpperCase() || 'U'}
+                        </div>
                         <span className="hidden sm:inline text-sm font-bold text-slate-700 dark:text-slate-200">{user.username}</span>
                         <ChevronDownIcon className={`text-slate-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
                     </button>
                     {isUserMenuOpen && (
-                        <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-alco-surface rounded-2xl shadow-2xl py-2 z-50 border border-slate-200 dark:border-white/10">
-                            <div className="px-4 py-2 border-b border-slate-100 dark:border-white/5 mb-2">
-                                <p className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">{user.role}</p>
+                        <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-[#111827] rounded-xl shadow-2xl py-1.5 z-50 border border-slate-200/80 dark:border-white/[0.06] animate-scale-in">
+                            <div className="px-4 py-2 border-b border-slate-100 dark:border-white/[0.04] mb-1">
+                                <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">{user.role}</p>
                             </div>
-                            <button onClick={onLogout} className="block w-full text-left px-4 py-2 text-sm text-rose-500 font-bold hover:bg-rose-500/10">
+                            <button onClick={onLogout} className="block w-full text-left px-4 py-2 text-sm text-rose-500 font-bold hover:bg-rose-500/10 rounded-lg mx-0 transition-colors">
                                 Cerrar Sesión
                             </button>
                         </div>
@@ -82,8 +90,23 @@ const Header: React.FC<{ user: User; onLogout: () => void; onToggleSidebar: () =
 const MainLayout: React.FC<{ user: User; onLogout: () => void }> = ({ user, onLogout }) => {
     const [isMobileSidebarOpen, setMobileSidebarOpen] = useState(false);
     const [isCollapsed, setIsCollapsed] = useState(false);
+    const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+    useEffect(() => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
+
     return (
-        <div className="flex h-screen bg-slate-50 dark:bg-alco-dark overflow-hidden text-slate-900 dark:text-slate-200 transition-colors duration-300">
+        <div className="flex h-screen bg-slate-50 dark:bg-[#060a14] overflow-hidden text-slate-900 dark:text-slate-200 transition-colors duration-300">
             <Sidebar
                 onLogout={onLogout}
                 isCollapsed={isCollapsed}
@@ -91,7 +114,13 @@ const MainLayout: React.FC<{ user: User; onLogout: () => void }> = ({ user, onLo
                 onMobileNavigate={() => setMobileSidebarOpen(false)}
                 onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
             />
-            <div className="flex-1 flex flex-col transition-all duration-300 overflow-hidden">
+            <div className="flex-1 flex flex-col transition-all duration-300 overflow-hidden relative">
+                {!isOnline && (
+                    <div className="offline-banner text-white text-[10px] font-black text-center py-2 px-4 z-50 flex items-center justify-center gap-2 uppercase tracking-wider animate-fade-in">
+                        <i className="fas fa-wifi-slash text-xs"></i>
+                        Sin Conexión — Funciones de sincronización e IA no disponibles
+                    </div>
+                )}
                 <Header user={user} onLogout={onLogout} onToggleSidebar={() => setMobileSidebarOpen(!isMobileSidebarOpen)} />
                 <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 custom-scrollbar relative">
                     <Outlet />
@@ -130,34 +159,42 @@ const App: React.FC = () => {
     return (
         <ThemeProvider>
             <NotificationProvider>
-                <AgentProvider>
-                    <HashRouter>
-                        <Routes>
-                            <Route
-                                path="/login"
-                                element={user ? <Navigate to="/dashboard" /> : <LoginPage onLogin={handleLogin} />}
-                            />
-                            <Route path="/" element={user ? <MainLayout user={user} onLogout={handleLogout} /> : <Navigate to="/login" />}>
-                                <Route index element={<Navigate to="/dashboard" />} />
-                                <Route path="dashboard" element={<Dashboard user={user!} />} />
-                                <Route path="quality/forms" element={<Forms />} />
-                                <Route path="quality/nc" element={<NonConformities />} />
-                                <Route path="quality/claims" element={<QualityClaims />} />
-                                <Route path="quality/audits" element={<Audits />} />
-                                <Route path="quality/library" element={<Library />} />
-                                <Route path="quality/indicators" element={<Indicators />} />
-                                <Route path="metrology" element={<Metrology />} />
-                                <Route path="metrology/replacement" element={<MetrologyReplacement />} />
-                                <Route path="metrology/calibration" element={<Calibration />} />
-                                <Route path="reports" element={<Reports />} />
-                                <Route path="ops/projects" element={<Projects />} />
-                                <Route path="maintenance/board" element={<Maintenance />} />
+                <ConfirmDialogProvider>
+                    <AgentProvider>
+                        <MessagingProvider userId={user?.id || ''} userName={user?.username || ''}>
+                            <HashRouter>
+                                <React.Suspense fallback={<PageLoader />}>
+                                    <Routes>
+                                        <Route
+                                            path="/login"
+                                            element={user ? <Navigate to="/dashboard" /> : <LoginPage onLogin={handleLogin} />}
+                                        />
+                                        <Route path="/" element={user ? <MainLayout user={user} onLogout={handleLogout} /> : <Navigate to="/login" />}>
+                                            <Route index element={<Navigate to="/dashboard" />} />
+                                            <Route path="dashboard" element={<Dashboard user={user!} />} />
+                                            <Route path="quality/forms" element={<Forms />} />
+                                            <Route path="quality/nc" element={<NonConformities />} />
+                                            <Route path="quality/claims" element={<QualityClaims />} />
+                                            <Route path="quality/audits" element={<Audits />} />
+                                            <Route path="quality/library" element={<Library />} />
+                                            <Route path="quality/indicators" element={<Indicators />} />
+                                            <Route path="metrology" element={<Metrology />} />
+                                            <Route path="metrology/replacement" element={<MetrologyReplacement />} />
+                                            <Route path="metrology/calibration" element={<Calibration />} />
+                                            <Route path="reports" element={<Reports />} />
+                                            <Route path="ops/projects" element={<Projects />} />
+                                            <Route path="maintenance/board" element={<Maintenance />} />
 
-                                <Route path="installations" element={<Installations />} />
-                            </Route>
-                        </Routes>
-                    </HashRouter>
-                </AgentProvider>
+                                            <Route path="messaging" element={<Messaging />} />
+                                            <Route path="settings" element={<AdminSettings />} />
+                                        </Route>
+                                    </Routes>
+                                </React.Suspense>
+                            </HashRouter>
+                        </MessagingProvider>
+                        <ReloadPrompt />
+                    </AgentProvider>
+                </ConfirmDialogProvider>
             </NotificationProvider>
         </ThemeProvider>
     );

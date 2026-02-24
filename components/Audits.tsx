@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { GoogleGenAI } from "@google/genai";
 import Breadcrumbs from './Breadcrumbs';
 import {
     RobotIcon, SearchIcon, CalendarIcon, BookIcon, CheckCircleIcon,
@@ -9,8 +8,10 @@ import {
 } from '../constants';
 import ReactMarkdown from 'react-markdown';
 import { useNotification } from './NotificationSystem';
-import { supabase } from '../supabaseClient';
+import { useConfirmDialog } from './ConfirmDialog';
+import { supabase } from '../insforgeClient';
 import BulkUploadButton from './BulkUploadButton';
+import { EmailService } from '../services/NotificationCoreService';
 
 interface AuditFinding {
     id: string;
@@ -46,6 +47,7 @@ const ISO_CLAUSES = [
 
 const Audits: React.FC = () => {
     const { addNotification } = useNotification();
+    const { confirm } = useConfirmDialog();
     const [activeTab, setActiveTab] = useState<'dashboard' | 'execution' | 'report'>('dashboard');
     const [selectedAudit, setSelectedAudit] = useState<AlcoAudit | null>(null);
     const [isPlanningModalOpen, setIsPlanningModalOpen] = useState(false);
@@ -140,6 +142,16 @@ const Audits: React.FC = () => {
 
             setAudits([newAudit, ...audits]);
             setIsPlanningModalOpen(false);
+
+            await EmailService.send({
+                to: newAudit.auditor,
+                subject: `Nueva Auditoría Planificada: ${newAudit.reportNumber}`,
+                body: `Se ha planificado una nueva auditoría en el sistema.\nReporte: ${newAudit.reportNumber}\nAuditor: ${newAudit.auditor}\nProceso: ${newAudit.process}`,
+                moduleName: 'audits',
+                referenceId: data.id,
+                triggeredBy: 'system'
+            });
+
             addNotification({ type: 'success', title: 'AUDITORÍA PROGRAMADA', message: `El proceso ${newAudit.process} ha sido agendado.` });
 
         } catch (error) {
@@ -228,6 +240,16 @@ const Audits: React.FC = () => {
             setSelectedAudit(updated);
             setAudits(prev => prev.map(a => a.id === updated.id ? updated : a));
             if (status === 'Finalizada') setActiveTab('dashboard');
+
+            await EmailService.send({
+                to: updated.auditor,
+                subject: `Estado de Auditoría Actualizado: ${updated.reportNumber}`,
+                body: `El estado de la auditoría ha cambiado a: ${status}.\nReporte: ${updated.reportNumber}`,
+                moduleName: 'audits',
+                referenceId: selectedAudit.id,
+                triggeredBy: 'system'
+            });
+
             addNotification({ type: 'success', title: 'Estado Actualizado', message: `Auditoría marcada como ${status}.` });
 
         } catch (error) {
@@ -237,7 +259,14 @@ const Audits: React.FC = () => {
     }
 
     const handleDeleteAudit = async (id: string) => {
-        if (!confirm('¿Está seguro de eliminar esta auditoría? Esta acción no se puede deshacer.')) return;
+        const confirmed = await confirm({
+            title: 'Eliminar auditoría',
+            message: '¿Está seguro de eliminar esta auditoría? Esta acción no se puede deshacer.',
+            variant: 'danger',
+            confirmLabel: 'Eliminar',
+            icon: 'fa-trash-alt'
+        });
+        if (!confirmed) return;
         try {
             const { error } = await supabase.from('audits').delete().eq('id', id);
             if (error) throw error;
@@ -254,23 +283,38 @@ const Audits: React.FC = () => {
         if (!selectedAudit || selectedAudit.findings.length === 0) return;
         setIsAnalyzingIA(true);
         try {
-            const apiKey = import.meta.env.VITE_GOOGLE_API_KEY || 'YOUR_API_KEY';
-            const ai = new GoogleGenAI({ apiKey });
-            const prompt = `Actúa como Auditor Líder ISO 9001. Genera un "Resumen Ejecutivo de Auditoría" profesional para el proceso "${selectedAudit.process}". Hallazgos detectados: ${JSON.stringify(selectedAudit.findings)}. El tono debe ser formal, destacando la madurez del sistema y áreas de mejora. Máximo 150 palabras en formato Markdown.`;
-            const response = await ai.models.generateContent({ model: 'gemini-1.5-flash-001', contents: prompt });
-            const summary = response.text;
+            const { generateContent } = await import('../utils/aiService');
 
-            const { error } = await supabase
-                .from('audits')
-                .update({ executive_summary: summary })
-                .eq('id', selectedAudit.id);
+            const prompt = `Actúa como Auditor Líder ISO 9001. Genera un "Resumen Ejecutivo de Auditoría" profesional para el proceso "${selectedAudit.process}". Hallazgos detectados: ${JSON.stringify(selectedAudit.findings)}. El tono debe ser formal, destacando la madurez del sistema y áreas de mejora. Máximo 150 palabras en formato Markdown. Responde SIEMPRE en Español. Asegúrate de que todos los valores del JSON estén en español.`;
 
-            if (error) throw error;
+            try {
+                const summary = await generateContent("gemini-1.5-flash-001", prompt);
 
-            const updated = { ...selectedAudit, executiveSummary: summary };
-            setSelectedAudit(updated);
-            setAudits(prev => prev.map(a => a.id === updated.id ? updated : a));
-            addNotification({ type: 'success', title: 'RESUMEN IA GENERADO', message: 'Análisis de madurez incorporado al reporte.' });
+                if (!summary) throw new Error("No se pudo generar el resumen (Respuesta vacía)");
+
+                const { error: updateError } = await supabase
+                    .from('audits')
+                    .update({ executive_summary: summary })
+                    .eq('id', selectedAudit.id);
+
+                if (updateError) throw updateError;
+
+                // Refresh local state
+                const updated = { ...selectedAudit, executiveSummary: summary };
+                setSelectedAudit(updated as any);
+                setAudits(prev => prev.map(a => a.id === updated.id ? updated : a) as any);
+
+                addNotification({ type: 'success', title: 'Generado', message: 'Resumen Ejecutivo creado con éxito.' });
+            } catch (error: any) {
+                console.error("Audit AI Error:", error);
+                addNotification({
+                    type: 'error',
+                    title: 'Error IA',
+                    message: `No se pudo crear el resumen: ${error.message}`
+                });
+            } finally {
+                setIsAnalyzingIA(false); // Assuming setIsAnalyzingIA is the correct state setter
+            }
         } catch (e) {
             console.error(e);
             addNotification({ type: 'error', title: 'ERROR IA', message: 'No se pudo generar el análisis automático.' });
@@ -279,7 +323,7 @@ const Audits: React.FC = () => {
         }
     };
 
-    const inputStyles = "w-full p-4 bg-slate-50 dark:bg-[#1a1a24] border border-slate-200 dark:border-white/5 rounded-2xl text-xs font-bold focus:ring-2 focus:ring-sky-500 outline-none uppercase transition-all";
+    const inputStyles = "w-full p-4 bg-slate-50 dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/[0.06] rounded-2xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/40 outline-none uppercase transition-all";
     const labelStyles = "text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 block ml-1";
 
     return (
@@ -288,9 +332,9 @@ const Audits: React.FC = () => {
 
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div>
-                    <h1 className="text-5xl font-black text-slate-800 dark:text-white uppercase tracking-tighter leading-none">Control de <span className="text-sky-600">Cumplimiento</span></h1>
+                    <h1 className="text-5xl font-black text-slate-800 dark:text-white uppercase tracking-tighter leading-none">Control de <span className="text-indigo-500">Cumplimiento</span></h1>
                     <p className="text-slate-500 font-bold mt-2 uppercase text-xs tracking-widest italic flex items-center gap-2">
-                        <ShieldCheckIcon className="text-sky-600" /> Requerimientos Legales y Normativos ISO 19011
+                        <ShieldCheckIcon className="text-indigo-500" /> Requerimientos Legales y Normativos ISO 19011
                     </p>
                 </div>
                 {activeTab === 'dashboard' && (
@@ -300,7 +344,7 @@ const Audits: React.FC = () => {
                             onUploadComplete={fetchAudits}
                             label="Importar Auditorías"
                         />
-                        <button onClick={() => setIsPlanningModalOpen(true)} className="px-10 py-5 bg-sky-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl shadow-sky-600/20 hover:scale-105 active:scale-95 transition-all">
+                        <button onClick={() => setIsPlanningModalOpen(true)} className="px-10 py-5 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-500/20 hover:scale-105 active:scale-95 transition-all">
                             Programar Auditoría
                         </button>
                     </div>
@@ -308,12 +352,12 @@ const Audits: React.FC = () => {
             </div>
 
             {activeTab === 'dashboard' && (
-                <div className="bg-white dark:bg-alco-surface rounded-[4rem] border border-slate-100 dark:border-white/5 overflow-hidden shadow-xl animate-fade-in">
+                <div className="bg-white dark:bg-[#111827] rounded-[4rem] border border-slate-100 dark:border-white/5 overflow-hidden shadow-xl animate-fade-in">
                     <div className="p-10 border-b dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex flex-col md:flex-row justify-between items-center gap-6">
                         <h3 className="text-2xl font-black uppercase tracking-tighter">Libro Maestro de Auditorías</h3>
                         <div className="relative w-full md:w-80">
                             <input
-                                className="w-full pl-12 pr-6 py-4 bg-white dark:bg-[#0b0b14] border-none rounded-2xl shadow-sm text-xs font-bold outline-none focus:ring-2 focus:ring-sky-500"
+                                className="w-full pl-12 pr-6 py-4 bg-white dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/[0.06] rounded-2xl shadow-sm text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/40"
                                 placeholder="Filtrar por Informe o Proceso..."
                                 value={searchTerm}
                                 onChange={e => setSearchTerm(e.target.value)}
@@ -375,7 +419,7 @@ const Audits: React.FC = () => {
             {activeTab === 'execution' && selectedAudit && (
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 animate-fade-in-up">
                     <div className="lg:col-span-4 space-y-8">
-                        <div className="bg-white dark:bg-alco-surface p-10 rounded-[3.5rem] border border-slate-100 dark:border-white/5 shadow-xl">
+                        <div className="bg-white dark:bg-[#111827] p-10 rounded-[3.5rem] border border-slate-100 dark:border-white/5 shadow-xl">
                             <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.3em] mb-8">Puntos de Control ISO 9001</h3>
                             <div className="space-y-4">
                                 {ISO_CLAUSES.map(clause => (
@@ -393,7 +437,7 @@ const Audits: React.FC = () => {
                     </div>
 
                     <div className="lg:col-span-8 space-y-8">
-                        <div className="bg-white dark:bg-alco-surface p-12 rounded-[4rem] shadow-xl border border-slate-100 dark:border-white/5">
+                        <div className="bg-white dark:bg-[#111827] p-12 rounded-[4rem] shadow-xl border border-slate-100 dark:border-white/5">
                             <div className="flex justify-between items-center mb-10">
                                 <div><h3 className="text-2xl font-black uppercase tracking-tighter">Evidencias Recopiladas</h3><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Auditando: {selectedAudit.process}</p></div>
                                 <button onClick={() => { handleUpdateAuditStatus('Finalizada'); }} className="px-8 py-4 bg-emerald-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-emerald-900/20 active:scale-95 transition-all">Finalizar Trabajo de Campo</button>
@@ -449,7 +493,7 @@ const Audits: React.FC = () => {
 
             {activeTab === 'report' && selectedAudit && (
                 <div className="animate-fade-in max-w-5xl mx-auto py-10">
-                    <div className="bg-white dark:bg-alco-surface shadow-2xl p-16 md:p-24 border dark:border-white/5 relative overflow-hidden rounded-[2rem]">
+                    <div className="bg-white dark:bg-[#111827] shadow-2xl p-16 md:p-24 border dark:border-white/5 relative overflow-hidden rounded-[2rem]">
                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.03] rotate-[-30deg] pointer-events-none text-slate-900 dark:text-white">
                             <p className="text-[12rem] font-black uppercase tracking-[0.5em]">ALCO CONTROL</p>
                         </div>
@@ -508,7 +552,7 @@ const Audits: React.FC = () => {
                             </section>
 
                             <div className="flex justify-end pt-10 no-print">
-                                <button onClick={() => window.print()} className="px-12 py-5 bg-sky-600 text-white rounded-3xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-sky-900/20 active:scale-95 transition-all flex items-center gap-3"><DownloadIcon /> Exportar Copia Controlada</button>
+                                <button onClick={() => window.print()} className="px-12 py-5 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-3xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-indigo-500/20 active:scale-95 transition-all flex items-center gap-3"><DownloadIcon /> Exportar Copia Controlada</button>
                             </div>
                         </div>
                     </div>
@@ -519,7 +563,7 @@ const Audits: React.FC = () => {
                 <div className="fixed inset-0 z-[2500] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-6 overflow-y-auto">
                     <div className="bg-white dark:bg-[#0b0b14] rounded-[4rem] max-w-2xl w-full p-12 shadow-2xl animate-fade-in-up border border-slate-200 dark:border-white/5 relative overflow-hidden my-auto">
                         <div className="flex justify-between items-start mb-10">
-                            <div><h2 className="text-3xl font-black text-slate-800 dark:text-white uppercase tracking-tighter leading-none">Programar <span className="text-sky-600">Auditoría</span></h2><p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-2">Plan Anual de Auditorías ISO 9001</p></div>
+                            <div><h2 className="text-3xl font-black text-slate-800 dark:text-white uppercase tracking-tighter leading-none">Programar <span className="text-indigo-500">Auditoría</span></h2><p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-2">Plan Anual de Auditorías ISO 9001</p></div>
                             <button onClick={() => setIsPlanningModalOpen(false)} className="text-slate-400 hover:text-rose-500 text-3xl transition-colors">&times;</button>
                         </div>
                         <form onSubmit={handleCreateAudit} className="space-y-6">
@@ -528,7 +572,7 @@ const Audits: React.FC = () => {
                             <div><label className={labelStyles}>Fecha de Auditoría</label><input name="date" type="date" className={inputStyles} required /></div>
                             <div><label className={labelStyles}>Objetivo Estratégico</label><input name="objective" className={inputStyles} placeholder="EJ: EVALUAR MADUREZ DEL SGC" required /></div>
                             <div><label className={labelStyles}>Alcance Técnico</label><input name="scope" className={inputStyles} placeholder="EJ: LÍNEAS DE CORTE Y PINTURA" required /></div>
-                            <button type="submit" className="w-full py-5 bg-sky-600 text-white rounded-3xl font-black text-xs uppercase tracking-[0.2em] shadow-xl active:scale-95 transition-all"><SaveIcon /> Notificar y Programar</button>
+                            <button type="submit" className="w-full py-5 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-3xl font-black text-xs uppercase tracking-[0.2em] shadow-xl active:scale-95 transition-all"><SaveIcon /> Notificar y Programar</button>
                         </form>
                     </div>
                 </div>

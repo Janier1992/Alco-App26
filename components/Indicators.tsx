@@ -21,9 +21,9 @@ const Indicators: React.FC = () => {
     const gridColor = theme === 'dark' ? '#1e293b' : '#f1f5f9';
 
     const [targets, setTargets] = useState<KpiTarget[]>([
-        { id: '1', kpi: 'Eficiencia de Corte', target: '98%', status: 'Conforme' },
-        { id: '2', kpi: 'Rechazos de Pintura', target: '< 2%', status: 'Alerta' },
-        { id: '3', kpi: 'Aprovechamiento Cristal', target: '92%', status: 'Crítico' }
+        { id: '1', kpi: 'Eficiencia de CORTE DE', target: '98%', status: 'Conforme' },
+        { id: '2', kpi: 'RECHAZOS POR PINTURA', target: '< 2%', status: 'Alerta' },
+        { id: '3', kpi: 'Aprovechamiento VIDRIO CRUDO', target: '92%', status: 'Crítico' }
     ]);
 
     const handleDeleteTarget = (id: string) => {
@@ -54,35 +54,35 @@ const Indicators: React.FC = () => {
     return (
         <div className="animate-fade-in space-y-8 pb-20">
             <Breadcrumbs crumbs={[{ label: 'DASHBOARDS', path: '/dashboard' }, { label: 'KPIs ESTRATÉGICOS' }]} />
-            
+
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div>
                     <h1 className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white uppercase tracking-tighter leading-none">Dashboards <span className="text-sky-600">Estratégicos</span></h1>
                     <p className="text-slate-500 font-bold mt-2 uppercase text-xs tracking-widest italic">Performance Operativo en Tiempo Real - Alco Proyectos</p>
                 </div>
-                <div className="flex gap-2 p-1.5 bg-white dark:bg-alco-surface rounded-2xl shadow-sm border border-slate-100 dark:border-white/5">
+                <div className="flex gap-2 p-1.5 bg-white dark:bg-[#111827] rounded-2xl shadow-sm border border-slate-100 dark:border-white/5">
                     <button className="px-6 py-2 bg-sky-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-sky-600/20">Planta 1</button>
                     <button className="px-6 py-2 text-slate-400 font-black text-[10px] uppercase hover:text-sky-600 transition-colors">Planta 2</button>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                 {[
+                {[
                     { l: 'OEE Global', v: '94.2%', t: '▲ 2.1%', c: 'text-emerald-500', bc: 'border-emerald-500' },
                     { l: 'Tasa de Defectos', v: '1.4%', t: '▼ 0.3%', c: 'text-rose-500', bc: 'border-rose-500' },
                     { l: 'Eficiencia Cristal', v: '88.5%', t: '▲ 4.2%', c: 'text-sky-500', bc: 'border-sky-500' },
                     { l: 'Cierre de CAPAs', v: '100%', t: 'ESTABLE', c: 'text-indigo-500', bc: 'border-indigo-500' }
-                 ].map((stat, i) => (
-                    <div key={i} className={`bg-white dark:bg-alco-surface p-8 rounded-[2.5rem] shadow-sm border-l-8 ${stat.bc} transition-all hover:shadow-xl hover:-translate-y-1`}>
+                ].map((stat, i) => (
+                    <div key={i} className={`bg-white dark:bg-[#111827] p-8 rounded-[2.5rem] shadow-sm border-l-8 ${stat.bc} transition-all hover:shadow-xl hover:-translate-y-1`}>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{stat.l}</p>
                         <p className="text-4xl font-black text-slate-800 dark:text-white tracking-tighter">{stat.v}</p>
                         <p className={`text-[10px] font-black ${stat.c} uppercase mt-2`}>{stat.t} vs mes anterior</p>
                     </div>
-                 ))}
+                ))}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                <div className="lg:col-span-8 bg-white dark:bg-alco-surface p-10 rounded-[3.5rem] shadow-sm border border-slate-100 dark:border-white/5">
+                <div className="lg:col-span-8 bg-white dark:bg-[#111827] p-10 rounded-[3.5rem] shadow-sm border border-slate-100 dark:border-white/5">
                     <div className="flex justify-between items-center mb-10">
                         <div><h3 className="text-xl font-black uppercase tracking-tighter flex items-center gap-3"><RefreshIcon className="text-sky-600" /> Deriva de Conformidad Semanal</h3></div>
                         <div className="flex gap-2"><span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-[9px] font-black uppercase">LIVE FEED</span></div>
@@ -90,7 +90,7 @@ const Indicators: React.FC = () => {
                     <div className="h-[350px]">
                         <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={MOCK_CHART_DATA.qualityTrend}>
-                                <defs><linearGradient id="colorInd" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.3}/><stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/></linearGradient></defs>
+                                <defs><linearGradient id="colorInd" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.3} /><stop offset="95%" stopColor="#0ea5e9" stopOpacity={0} /></linearGradient></defs>
                                 <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
                                 <XAxis dataKey="name" stroke={axisColor} fontSize={10} fontWeight="bold" axisLine={false} tickLine={false} />
                                 <YAxis domain={[90, 100]} stroke={axisColor} fontSize={10} fontWeight="bold" axisLine={false} tickLine={false} />
@@ -101,7 +101,7 @@ const Indicators: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="lg:col-span-4 bg-white dark:bg-alco-surface p-8 rounded-[3.5rem] shadow-sm border border-slate-100 dark:border-white/5 flex flex-col transition-all">
+                <div className="lg:col-span-4 bg-white dark:bg-[#111827] p-8 rounded-[3.5rem] shadow-sm border border-slate-100 dark:border-white/5 flex flex-col transition-all">
                     <div className="flex justify-between items-center mb-8">
                         <h3 className="text-lg font-black uppercase tracking-tighter">Umbrales de Control</h3>
                         <button onClick={() => setIsAddModalOpen(true)} className="size-10 bg-sky-50 dark:bg-sky-900/20 text-sky-600 rounded-xl flex items-center justify-center hover:bg-sky-600 hover:text-white transition-all shadow-sm"><PlusIcon /></button>

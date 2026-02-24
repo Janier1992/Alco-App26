@@ -13,8 +13,53 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       react(),
-      // VitePWA({...}) // DISABLED FOR DEBUGGING
+      VitePWA({
+        registerType: 'autoUpdate',
+        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+        manifest: {
+          name: 'Alco - Gestión Proyectos SGC',
+          short_name: 'Alco QMS',
+          description: 'Sistema de Gestión de Calidad y Proyectos - Alco',
+          theme_color: '#0b0b14',
+          background_color: '#0b0b14',
+          display: 'standalone',
+          orientation: 'portrait',
+          start_url: './',
+          icons: [
+            {
+              src: 'pwa-192x192.png',
+              sizes: '192x192',
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: 'pwa-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: 'pwa-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable'
+            }
+          ]
+        }
+      })
     ],
+    build: {
+      target: 'esnext',
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-ui': ['recharts', 'react-markdown'],
+            'vendor-core': ['@google/generative-ai', '@insforge/sdk', 'xlsx']
+          }
+        }
+      }
+    },
     define: {
       'process.env.API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY),
       'process.env.GEMINI_API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY)

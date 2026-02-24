@@ -8,16 +8,7 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
-// FORCE UNREGISTER SERVICE WORKER
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then(function (registrations) {
-    for (let registration of registrations) {
-      registration.unregister();
-      console.log('Service Worker Unregistered');
-    }
-  });
-}
-
+// Mount application
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>

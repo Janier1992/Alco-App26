@@ -5,7 +5,7 @@ import {
     ResponsiveContainer, Cell, AreaChart, Area, LineChart, Line,
     PieChart, Pie
 } from 'recharts';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import {
     MOCK_CHART_DATA, FileAltIcon, ChartLineIcon, RefreshIcon,
     RobotIcon, CheckCircleIcon, ExclamationTriangleIcon,
@@ -49,18 +49,18 @@ const ReportGenerator: React.FC = () => {
                 topProcess: reportParams.area === 'all' ? 'Pintura' : reportParams.area
             };
 
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY);
+            const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
             const prompt = `Actúa como Director de Calidad de Alco Proyectos. Genera un reporte BI para el periodo: ${reportParams.dateRange}. 
             Tipo: ${reportParams.reportType}. Datos: NCs Activas: ${mockContext.ncs}, Calibraciones Vencidas: ${mockContext.calibVenc}, OEE: ${mockContext.oee}%. 
-            Estructura: 1. Resumen Gerencial, 2. Análisis de Riesgos en ${mockContext.topProcess}, 3. Tres Recomendaciones de Mejora Continua. Usa Markdown profesional.`;
+            Análisis específico para el área: ${reportParams.area === 'all' ? 'PLANTA GENERAL' : reportParams.area}.
+            Estructura: 1. Resumen Gerencial, 2. Análisis de Riesgos en Proceso ${mockContext.topProcess}, 3. Tres Recomendaciones de Mejora Continua (CAPA) enfocadas en Calidad ISO 9001. Usa Markdown profesional. Responde SIEMPRE en Español (ESTRICTAMENTE).`;
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-1.5-flash',
-                contents: prompt
-            });
+            const response = await model.generateContent(prompt);
+            const text = response.response.text();
 
             setBiData({
-                analysis: response.text,
+                analysis: text,
                 kpis: mockContext,
                 timestamp: new Date().toLocaleString(),
                 trends: MOCK_CHART_DATA.qualityTrend.map(d => ({ ...d, value: d.value + (Math.random() * 5 - 2.5) }))
@@ -111,16 +111,17 @@ const ReportGenerator: React.FC = () => {
                     <label className={labelStyles}>Área de Interés</label>
                     <select value={reportParams.area} onChange={e => setReportParams(p => ({ ...p, area: e.target.value }))} className={inputStyles}>
                         <option value="all">Toda la Planta</option>
-                        <option value="Corte">Corte Aluminio</option>
-                        <option value="Pintura">Planta Pintura</option>
-                        <option value="Ensamble">Ensamble Fachada</option>
+                        <option value="CORTE DE">Corte de Perfilería</option>
+                        <option value="PINTURA">Planta Pintura</option>
+                        <option value="ENSAMBLE">Ensamble Fachada</option>
+                        <option value="FELPA / EMPAQUE">Felpa / Empaque</option>
                     </select>
                 </div>
                 <div>
                     <button
                         type="submit"
                         disabled={isGenerating}
-                        className={`w-full py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all shadow-xl flex items-center justify-center gap-3 ${isGenerating ? 'bg-slate-100 text-slate-400' : 'bg-sky-600 text-white hover:scale-105 active:scale-95 shadow-sky-600/20'}`}
+                        className={`w - full py - 4 rounded - 2xl font - black text - [11px] uppercase tracking - widest transition - all shadow - xl flex items - center justify - center gap - 3 ${isGenerating ? 'bg-slate-100 text-slate-400' : 'bg-sky-600 text-white hover:scale-105 active:scale-95 shadow-sky-600/20'} `}
                     >
                         {isGenerating ? <RefreshIcon className="animate-spin" /> : <ChartLineIcon />}
                         {isGenerating ? 'PROCESANDO...' : 'GENERAR REPORTE'}

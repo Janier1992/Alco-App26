@@ -2,9 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import type { Column, Task, Priority, Label, UserAvatar, Attachment } from '../types';
 import Breadcrumbs from './Breadcrumbs';
 import { AVAILABLE_LABELS, PROJECT_USERS, PaperclipIcon, PlusIcon, CameraIcon, DownloadIcon, WrenchIcon, ShieldCheckIcon, DropIcon, RobotIcon } from '../constants';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../insforgeClient';
 import { useNotification } from './NotificationSystem';
 import BulkUploadButton from './BulkUploadButton';
+import { generateContent } from '../utils/aiService';
 
 // --- Helper Components (Shared Logic with Projects, adapted for Maintenance) ---
 
@@ -235,6 +236,19 @@ const MaintenanceTaskModal: React.FC<{ isOpen: boolean; onClose: () => void; tas
                             <div>
                                 <label className={labelStyles}>Descripción Detallada</label>
                                 <textarea value={editedTask.description} onChange={(e) => setEditedTask({ ...editedTask, description: e.target.value })} className={`${inputStyles} min-h-[120px]`} placeholder="Describa el problema, repuestos necesarios, etc."></textarea>
+                                <button
+                                    onClick={async () => {
+                                        if (!editedTask.description) return alert("Escriba una descripción primero.");
+                                        const prompt = `Analiza esta falla de mantenimiento: "${editedTask.description}". Sugiere: 1. Posible Causa Raíz. 2. Herramientas Recomendadas. 3. EPP necesario. Responde en Español, formato texto breve.`;
+                                        const response = await generateContent("gemini-1.5-flash", prompt);
+                                        if (response) {
+                                            setEditedTask(prev => prev ? { ...prev, description: prev.description + "\n\n[IA DIAGNÓSTICO]:\n" + response } : null);
+                                        }
+                                    }}
+                                    className="mt-2 text-[10px] font-bold text-sky-600 flex items-center gap-1 hover:text-sky-800"
+                                >
+                                    <RobotIcon /> PROCESAR CON IA
+                                </button>
                             </div>
 
                             <AttachmentsManager

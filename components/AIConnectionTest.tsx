@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const AIConnectionTest: React.FC = () => {
     const [status, setStatus] = useState<string>('Esperando acción...');
@@ -20,17 +20,15 @@ const AIConnectionTest: React.FC = () => {
                 return;
             }
 
-            addLog('Inicializando cliente GoogleGenAI...');
-            const ai = new GoogleGenAI({ apiKey });
+            addLog('Inicializando cliente GoogleGenerativeAI...');
+            const ai = new GoogleGenerativeAI(apiKey);
+            const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
             addLog('Enviando solicitud a gemini-1.5-flash...');
-            const response = await ai.models.generateContent({
-                model: 'gemini-1.5-flash',
-                contents: { parts: [{ text: 'Responde solo con la palabra: CONECTADO' }] }
-            });
+            const response = await model.generateContent('Responde solo con la palabra: CONECTADO');
 
             addLog('Respuesta recibida.');
-            addLog(`Texto: ${response.text}`);
+            addLog(`Texto: ${response.response.text()}`);
             setStatus('ÉXITO: Conexión establecida.');
 
         } catch (error: any) {
