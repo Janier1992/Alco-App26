@@ -117,6 +117,18 @@ const Projects: React.FC = () => {
                                     registroUsers={REGISTRO_USERS}
                                 />
                             ))}
+
+                            {/* Add Task Button per Column */}
+                            <button
+                                onClick={() => {
+                                    setTargetColumnId(col.id);
+                                    setIsCreateModalOpen(true);
+                                }}
+                                className="w-full flex items-center gap-2 p-3 text-slate-500 hover:bg-slate-200 dark:hover:bg-white/10 rounded-xl transition-all group border border-dashed border-slate-300 dark:border-white/10"
+                            >
+                                <PlusIcon className="size-4 group-hover:text-sky-500" />
+                                <span className="text-xs font-bold group-hover:text-sky-500 transition-colors">Añada una tarjeta</span>
+                            </button>
                         </div>
 
                         {/* Add Task Button per Column */}

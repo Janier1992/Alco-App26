@@ -188,7 +188,7 @@ const AgentHub: React.FC = () => {
                         mimeType: activeDocument.mime
                     }
                 });
-                parts.unshift({ text: `[SYSTEM] El usuario está visualizando el documento "${activeDocument.name}". Úsalo como contexto principal si es relevante.` });
+                parts.unshift({ text: `[SYSTEM] El usuario está visualizando el documento "${activeDocument.name}".Úsalo como contexto principal si es relevante.` });
             }
 
             if (attachedImage) {
@@ -245,6 +245,9 @@ const AgentHub: React.FC = () => {
                 const response = await result.response;
                 responseText = response.text();
             }
+
+            // Mock Grounding for now as client SDK might handle it differently or requires specific setup
+            // (Client SDK usually exposes it in result.response.candidates[0].citationMetadata or similar)
 
             const agentMsg: AgentMessage = {
                 id: (Date.now() + 1).toString(),
