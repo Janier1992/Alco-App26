@@ -34,10 +34,12 @@ import { NotificationProvider } from './components/NotificationSystem';
 import { AgentProvider } from './components/AgentContext';
 import { ConfirmDialogProvider } from './components/ConfirmDialog';
 import { MessagingProvider } from './components/MessagingContext';
+import { usePWAInstall } from './hooks/usePWAInstall';
 
 const Header: React.FC<{ user: User; onLogout: () => void; onToggleSidebar: () => void }> = ({ user, onLogout, onToggleSidebar }) => {
     const [isUserMenuOpen, setUserMenuOpen] = useState(false);
     const { theme, toggleTheme } = useTheme();
+    const { isInstallable, promptInstall } = usePWAInstall();
 
     return (
         <header className="bg-white/80 dark:bg-[#0a0e18]/80 backdrop-blur-lg border-b border-slate-200/80 dark:border-white/[0.04] px-4 py-3 flex justify-between items-center z-40 transition-all duration-300 flex-shrink-0">
@@ -62,6 +64,16 @@ const Header: React.FC<{ user: User; onLogout: () => void; onToggleSidebar: () =
                 >
                     {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
                 </button>
+
+                {isInstallable && (
+                    <button
+                        onClick={promptInstall}
+                        className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
+                        title="Instalar Aplicación"
+                    >
+                        <i className="fas fa-download"></i> Instalar
+                    </button>
+                )}
 
                 <div className="relative">
                     <button onClick={() => setUserMenuOpen(!isUserMenuOpen)} className="flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-white/[0.04] p-1.5 px-3 rounded-xl transition-all border border-transparent hover:border-slate-200/80 dark:hover:border-white/[0.06]">

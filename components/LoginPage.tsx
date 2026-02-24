@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../insforgeClient';
 import type { User } from '../types';
 
+import { usePWAInstall } from '../hooks/usePWAInstall';
+
 interface LoginPageProps {
     onLogin: (user: User) => void;
 }
@@ -13,17 +15,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     const [password, setPassword] = useState('');
     const [username, setUsername] = useState('');
     const [loading, setLoading] = useState(false);
-    const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
     const [error, setError] = useState('');
 
-    useEffect(() => {
-        const handler = (e: Event) => {
-            e.preventDefault();
-            setDeferredPrompt(e);
-        };
-        window.addEventListener('beforeinstallprompt', handler);
-        return () => window.removeEventListener('beforeinstallprompt', handler);
-    }, []);
+    const { isInstallable, promptInstall } = usePWAInstall();
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -92,14 +86,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         }
     };
 
-    const handleInstallClick = async () => {
-        if (!deferredPrompt) return;
-        deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        if (outcome === 'accepted') {
-            setDeferredPrompt(null);
-        }
-    };
 
     return (
         <div className="min-h-screen w-full bg-[#060a14] text-slate-200 flex items-center justify-center p-4 font-sans relative overflow-hidden">
@@ -113,9 +99,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             </div>
 
             {/* Install PWA Button */}
-            {deferredPrompt && (
+            {isInstallable && (
                 <button
-                    onClick={handleInstallClick}
+                    onClick={promptInstall}
                     className="absolute top-6 right-6 flex items-center gap-2.5 px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white rounded-xl border border-white/10 transition-all font-bold text-xs uppercase tracking-wider z-50 animate-fade-in backdrop-blur-sm"
                 >
                     <i className="fas fa-download"></i>
