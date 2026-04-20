@@ -16,7 +16,7 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         registerType: 'autoUpdate',
         devOptions: { enabled: true },
-        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg', 'pwa-192x192.png', 'pwa-512x512.png'],
         manifest: {
           name: 'Alco - Gestión Proyectos SGC',
           short_name: 'Alco QMS',
@@ -25,7 +25,7 @@ export default defineConfig(({ mode }) => {
           background_color: '#0b0b14',
           display: 'standalone',
           orientation: 'portrait',
-          start_url: './',
+          start_url: '.',
           icons: [
             {
               src: 'pwa-192x192.png',
