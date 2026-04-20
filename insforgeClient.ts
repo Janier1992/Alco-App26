@@ -22,8 +22,12 @@ export const supabase = {
                 email,
                 password,
                 name: options?.data?.full_name || options?.data?.name || options?.name,
+                // @ts-ignore
+                redirectTo: options?.emailRedirectTo || window.location.origin,
                 options: {
-                    emailRedirectTo: options?.emailRedirectTo
+                    emailRedirectTo: options?.emailRedirectTo || window.location.origin,
+                    // @ts-ignore
+                    redirectTo: options?.emailRedirectTo || window.location.origin
                 }
             });
         },

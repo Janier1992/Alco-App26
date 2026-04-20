@@ -561,7 +561,7 @@ const Forms: React.FC = () => {
                 // Update Mode
                 const payload = getDBPayload(formData);
                 const { error } = await supabase
-                    .from('inspections')
+                    .from('field_inspections')
                     .update(payload)
                     .eq('id', editingId);
 
@@ -576,7 +576,7 @@ const Forms: React.FC = () => {
                 const inserts = plansToSubmit.map(plan => getDBPayload({ ...formData, planoOpc: plan }));
 
                 const { error } = await supabase
-                    .from('inspections')
+                    .from('field_inspections')
                     .insert(inserts);
 
                 if (error) throw error;

@@ -124,9 +124,9 @@ const DropdownManager: React.FC<{ label: string; items: (UserAvatar | Label)[]; 
             <div className="relative">
                 <div className="flex flex-wrap gap-1 p-2 border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 rounded-md min-h-[42px]">
                     {selectedItems.map(item => (
-                        <span key={item.id} className={`flex items-center gap-2 text-xs font-medium px-2 py-1 rounded ${isLabel(item) ? LABEL_STYLES[item.color] : 'bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-300'}`}>
-                            {isLabel(item) ? item.name : item.initials}
-                            <button onClick={() => onRemove(item.id)} className="font-bold">&times;</button>
+                        <span key={isLabel(item) ? item.id : (item as any).user_id || item.id} className={`flex items-center gap-2 text-xs font-medium px-2 py-1 rounded ${isLabel(item) ? LABEL_STYLES[item.color] : 'bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-300'}`}>
+                            {isLabel(item) ? item.name : (item as any).user_initials || (item as any).initials}
+                            <button onClick={() => onRemove(isLabel(item) ? item.id : (item as any).user_id || String(item.id))} className="font-bold">&times;</button>
                         </span>
                     ))}
                     <button onClick={() => setIsOpen(!isOpen)} className="p-1 rounded-full bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600"><PlusIcon /></button>
@@ -134,8 +134,8 @@ const DropdownManager: React.FC<{ label: string; items: (UserAvatar | Label)[]; 
                 {isOpen && (
                     <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-700 rounded-md shadow-lg max-h-40 overflow-y-auto">
                         {availableItems.map(item => (
-                            <div key={item.id} onClick={() => { onAdd(item); setIsOpen(false); }} className="px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-600 cursor-pointer">
-                                {isLabel(item) ? item.name : item.initials}
+                            <div key={isLabel(item) ? item.id : (item as any).user_id || item.id} onClick={() => { onAdd(item); setIsOpen(false); }} className="px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-600 cursor-pointer">
+                                {isLabel(item) ? item.name : (item as any).user_initials || (item as any).initials}
                             </div>
                         ))}
                     </div>
@@ -200,7 +200,7 @@ const MaintenanceTaskModal: React.FC<{ isOpen: boolean; onClose: () => void; tas
 
     const inputStyles = "w-full p-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-50 rounded-md focus:ring-2 focus:ring-sky-500 outline-none transition-colors";
     const labelStyles = "font-medium text-slate-600 dark:text-slate-400 block mb-1 text-sm";
-    const availableUsers = PROJECT_USERS.filter(u => !editedTask.assignedUsers.some(au => au.id === u.id));
+    const availableUsers = PROJECT_USERS.filter(u => !editedTask.assignedUsers.some(au => (au as any).user_id === u.id || au.id === u.id));
     const availableLabels = AVAILABLE_LABELS.filter(l => !editedTask.labels.some(sl => sl.id === l.id));
 
     return (
@@ -282,10 +282,10 @@ const MaintenanceTaskModal: React.FC<{ isOpen: boolean; onClose: () => void; tas
                             <DropdownManager
                                 label="Técnicos Asignados"
                                 items={PROJECT_USERS}
-                                selectedItems={editedTask.assignedUsers}
-                                availableItems={availableUsers}
-                                onAdd={(i) => setEditedTask(p => p ? { ...p, assignedUsers: [...p.assignedUsers, i as UserAvatar] } : null)}
-                                onRemove={(id) => setEditedTask(p => p ? { ...p, assignedUsers: p.assignedUsers.filter(u => u.id !== id) } : null)}
+                                selectedItems={editedTask.assignedUsers as any[]}
+                                availableItems={availableUsers as any[]}
+                                onAdd={(i) => setEditedTask(p => p ? { ...p, assignedUsers: [...p.assignedUsers, i as unknown as UserAvatar] } : null)}
+                                onRemove={(id) => setEditedTask(p => p ? { ...p, assignedUsers: p.assignedUsers.filter(u => (u as any).user_id !== id && u.id !== id) } : null)}
                             />
                             <DropdownManager
                                 label="Etiquetas"
@@ -395,7 +395,7 @@ const TaskCard: React.FC<{ task: Task; onDragStart: (e: React.DragEvent<HTMLDivE
                 </div>
                 <div className="flex -space-x-2">
                     {task.assignedUsers.map(u => (
-                        <div key={u.id} className="w-6 h-6 rounded-full bg-slate-300 dark:bg-slate-600 border-2 border-white dark:border-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-700 dark:text-slate-200" title={u.initials}>{u.initials}</div>
+                        <div key={(u as any).user_id || u.id} className="w-6 h-6 rounded-full bg-slate-300 dark:bg-slate-600 border-2 border-white dark:border-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-700 dark:text-slate-200" title={(u as any).user_initials}>{(u as any).user_initials || '??'}</div>
                     ))}
                 </div>
             </div>
@@ -438,6 +438,8 @@ const Maintenance: React.FC = () => {
     const fetchBoardData = async () => {
         try {
             setLoading(true);
+            let boardId: string;
+
             const { data: boardData, error: boardError } = await supabase
                 .from('boards')
                 .select('id')
@@ -445,10 +447,23 @@ const Maintenance: React.FC = () => {
                 .single();
 
             if (boardError || !boardData) {
-                console.error("Board not found:", boardError);
-                return;
+                // Auto-crear el board de mantenimiento si no existe en la BD migrada
+                const { data: newBoard, error: createError } = await supabase
+                    .from('boards')
+                    .insert({ title: 'Mantenimiento', description: 'Tablero de órdenes de trabajo', type: 'maintenance' })
+                    .select('id')
+                    .single();
+
+                if (createError || !newBoard) {
+                    console.error("Error creating maintenance board:", createError);
+                    addNotification({ type: 'error', title: 'Error', message: 'No se pudo inicializar el tablero de mantenimiento.' });
+                    return;
+                }
+                boardId = newBoard.id;
+            } else {
+                boardId = boardData.id;
             }
-            setBoardId(boardData.id);
+            setBoardId(boardId);
 
             const { data: colsData, error: colsError } = await supabase
                 .from('board_columns')
@@ -497,8 +512,8 @@ const Maintenance: React.FC = () => {
                     dueDate: t.due_date,
                     labels: t.labels || [],
                     assignedUsers: t.assignedUsers?.map((u: any) => ({
-                        id: u.user_id || u.id,
-                        initials: u.user_initials || '??'
+                        user_id: u.user_id || u.id,
+                        user_initials: u.user_initials || '??'
                     })) || [],
                     checklist: t.checklist || [],
                     attachments: t.attachments || [],

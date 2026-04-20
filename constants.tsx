@@ -273,7 +273,7 @@ export const METROLOGY_OBSERVACIONES_OPTIONS = [
 ];
 
 export const PROJECT_USERS = [
-    { id: 'u1', initials: 'JP' }, { id: 'u2', initials: 'MR' }, { id: 'u3', initials: 'CR' }, { id: 'u4', initials: 'JM' }
+    { user_id: 'u1', user_initials: 'JP' }, { user_id: 'u2', user_initials: 'MR' }, { user_id: 'u3', user_initials: 'CR' }, { user_id: 'u4', user_initials: 'JM' }
 ];
 
 export const AVAILABLE_LABELS = [

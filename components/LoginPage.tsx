@@ -59,7 +59,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                     options: {
                         data: {
                             full_name: username,
-                        }
+                        },
+                        emailRedirectTo: window.location.origin
                     }
                 });
 
