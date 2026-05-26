@@ -89,7 +89,6 @@ export const NAV_ITEMS: NavItem[] = [
             { id: 'forms', label: 'Inspecciones en Campo', path: '/quality/forms', icon: ClipboardListIcon },
             { id: 'nc', label: 'No Conformidades y CAPA', path: '/quality/nc', icon: ExclamationTriangleIcon },
             { id: 'claims', label: 'Gestión de Reclamos', path: '/quality/claims', icon: UserShieldIcon },
-            { id: 'audits', label: 'Auditorías ISO 9001', path: '/quality/audits', icon: RobotIcon },
         ],
     },
     {
@@ -104,28 +103,10 @@ export const NAV_ITEMS: NavItem[] = [
         ]
     },
     {
-        id: 'documents',
-        label: 'GESTIÓN DOCUMENTAL',
-        path: '/quality/library',
-        icon: BookIcon,
-    },
-    {
-        id: 'projects',
-        label: 'GESTIÓN DE PROYECTOS',
-        path: '/ops/projects',
-        icon: ProjectDiagramIcon,
-    },
-    {
         id: 'messaging',
         label: 'MENSAJERÍA',
         path: '/messaging',
         icon: ChatIcon,
-    },
-    {
-        id: 'settings',
-        label: 'CONFIGURACIÓN',
-        path: '/settings',
-        icon: CogIcon,
     }
 ];
 

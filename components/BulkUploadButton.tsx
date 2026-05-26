@@ -10,9 +10,10 @@ interface BulkUploadButtonProps {
     label?: string;
     mapping?: (row: any) => any;
     columns?: { key: string; label: string }[];
+    hideIcon?: boolean;
 }
 
-const BulkUploadButton: React.FC<BulkUploadButtonProps> = ({ tableName, onUploadComplete, label = 'Carga Masiva (Excel)', mapping, columns }) => {
+const BulkUploadButton: React.FC<BulkUploadButtonProps> = ({ tableName, onUploadComplete, label = 'Carga Masiva (Excel)', mapping, columns, hideIcon }) => {
     const { addNotification } = useNotification();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -121,7 +122,7 @@ const BulkUploadButton: React.FC<BulkUploadButtonProps> = ({ tableName, onUpload
                 disabled={isUploading}
                 className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs shadow-md transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-                {isUploading ? <RefreshIcon className="animate-spin" /> : <FileExcelIcon />}
+                {isUploading ? <RefreshIcon className="animate-spin" /> : (!hideIcon && <FileExcelIcon />)}
                 {isUploading ? 'Procesando...' : label}
             </button>
 

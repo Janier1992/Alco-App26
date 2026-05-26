@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../insforgeClient';
 import type { User } from '../types';
+import { VALID_USERS } from '../users';
 
 import { usePWAInstall } from '../hooks/usePWAInstall';
 
@@ -26,31 +27,53 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
         try {
             if (view === 'login') {
-                const { data, error: authError } = await supabase.auth.signInWithPassword({
-                    email,
-                    password,
-                });
+                let sessionUser: User | null = null;
 
-                if (authError) throw authError;
+                try {
+                    const { data, error: authError } = await supabase.auth.signInWithPassword({
+                        email,
+                        password,
+                    });
 
-                if (data.user) {
-                    const { data: profile, error: profileError } = await supabase
-                        .from('profiles')
-                        .select('*')
-                        .eq('id', data.user.id)
-                        .single();
+                    if (authError) throw authError;
 
-                    if (profileError && profileError.code !== 'PGRST116') {
-                        console.error('Profile fetch error:', profileError);
+                    if (data.user) {
+                        const { data: profile, error: profileError } = await supabase
+                            .from('profiles')
+                            .select('*')
+                            .eq('id', data.user.id)
+                            .single();
+
+                        if (profileError && profileError.code !== 'PGRST116') {
+                            console.error('Profile fetch error:', profileError);
+                        }
+
+                        sessionUser = {
+                            id: data.user.id,
+                            email: data.user.email || '',
+                            username: profile?.full_name || data.user.email?.split('@')[0] || 'Usuario',
+                            role: profile?.role || 'user',
+                        };
                     }
+                } catch (err: any) {
+                    console.warn("Autenticación remota no disponible. Iniciando fallback local:", err);
+                    
+                    // Fallback a los usuarios locales definidos
+                    const foundUser = VALID_USERS.find(
+                        u => u.email.toLowerCase() === email.toLowerCase() && u.password === password
+                    );
 
-                    const appUser: User = {
-                        id: data.user.id,
-                        email: data.user.email || '',
-                        username: profile?.full_name || data.user.email?.split('@')[0] || 'Usuario',
-                        role: profile?.role || 'user',
-                    };
-                    onLogin(appUser);
+                    if (foundUser) {
+                        const { password: _, ...userWithoutPassword } = foundUser;
+                        sessionUser = userWithoutPassword;
+                        console.log("Sesión de desarrollo local iniciada para:", sessionUser.username);
+                    } else {
+                        throw new Error('Credenciales inválidas. Intento remoto y local fallidos.');
+                    }
+                }
+
+                if (sessionUser) {
+                    onLogin(sessionUser);
                 }
             } else {
                 const { data, error: authError } = await supabase.auth.signUp({

@@ -10,19 +10,15 @@ import PageLoader from './components/PageLoader';
 const LoginPage = React.lazy(() => import('./components/LoginPage'));
 const Dashboard = React.lazy(() => import('./components/Dashboard'));
 const Forms = React.lazy(() => import('./components/Forms'));
-const Library = React.lazy(() => import('./components/Library'));
 const Indicators = React.lazy(() => import('./components/Indicators'));
 const Reports = React.lazy(() => import('./components/Reports'));
-const Audits = React.lazy(() => import('./components/Audits'));
 const NonConformities = React.lazy(() => import('./components/NonConformities'));
 const Metrology = React.lazy(() => import('./components/Metrology'));
 const MetrologyReplacement = React.lazy(() => import('./components/MetrologyReplacement'));
 const Calibration = React.lazy(() => import('./components/Calibration'));
 const AgentHub = React.lazy(() => import('./components/AgentHub'));
-const Projects = React.lazy(() => import('./components/Projects'));
 const Maintenance = React.lazy(() => import('./components/Maintenance'));
 const QualityClaims = React.lazy(() => import('./components/QualityClaims'));
-const AdminSettings = React.lazy(() => import('./components/AdminSettings'));
 const Messaging = React.lazy(() => import('./components/Messaging'));
 
 
@@ -187,18 +183,14 @@ const App: React.FC = () => {
                                             <Route path="quality/forms" element={<Forms />} />
                                             <Route path="quality/nc" element={<NonConformities />} />
                                             <Route path="quality/claims" element={<QualityClaims />} />
-                                            <Route path="quality/audits" element={<Audits />} />
-                                            <Route path="quality/library" element={<Library />} />
                                             <Route path="quality/indicators" element={<Indicators />} />
                                             <Route path="metrology" element={<Metrology />} />
                                             <Route path="metrology/replacement" element={<MetrologyReplacement />} />
                                             <Route path="metrology/calibration" element={<Calibration />} />
                                             <Route path="reports" element={<Reports />} />
-                                            <Route path="ops/projects" element={<Projects />} />
                                             <Route path="maintenance/board" element={<Maintenance />} />
 
                                             <Route path="messaging" element={<Messaging />} />
-                                            <Route path="settings" element={<AdminSettings />} />
                                         </Route>
                                     </Routes>
                                 </React.Suspense>

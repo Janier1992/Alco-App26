@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { InspectionData, AdverseEventData, ExternalForm } from '../types';
@@ -114,6 +113,7 @@ const Forms: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [globalSearch, setGlobalSearch] = useState('');
+    const [selectedAreaFilter, setSelectedAreaFilter] = useState('');
     const [filterId, setFilterId] = useState<string | null>(null); // New state for deep link filtering
     const [sortConfig, setSortConfig] = useState<{ key: string | null; direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' });
     const [currentPage, setCurrentPage] = useState(1);
@@ -162,6 +162,23 @@ const Forms: React.FC = () => {
         }));
     };
 
+    const uniqueAreas = useMemo(() => {
+        const areas = new Set<string>();
+        // 1. Cargar áreas de los registros existentes en el estado local (incluyendo áreas recién creadas)
+        submissions.forEach(s => {
+            if (s.areaProceso) {
+                areas.add(s.areaProceso.toUpperCase().trim());
+            }
+        });
+        // 2. Combinar con las áreas estáticas por defecto de constants.tsx
+        AREAS_PROCESO.forEach(a => {
+            if (a) {
+                areas.add(a.toUpperCase().trim());
+            }
+        });
+        return Array.from(areas).sort((a, b) => a.localeCompare(b));
+    }, [submissions]);
+
     const filteredSubmissions = useMemo(() => {
         // 0. Strict Filter by ID (Deep Link)
         if (filterId) {
@@ -169,6 +186,14 @@ const Forms: React.FC = () => {
         }
 
         let result = submissions.filter(sub => {
+            // 0.5 Filtro por Área de Proceso seleccionada en el desplegable
+            if (selectedAreaFilter) {
+                const areaVal = String(sub.areaProceso || '').toUpperCase().trim();
+                if (areaVal !== selectedAreaFilter.toUpperCase().trim()) {
+                    return false;
+                }
+            }
+
             // 1. Filtro por columnas específicas
             const matchesColumns = Object.entries(columnFilters).every(([key, value]) => {
                 if (!value) return true;
@@ -199,7 +224,7 @@ const Forms: React.FC = () => {
         }
 
         return result;
-    }, [submissions, columnFilters, globalSearch, sortConfig, filterId]);
+    }, [submissions, columnFilters, globalSearch, sortConfig, filterId, selectedAreaFilter]);
 
     const paginatedSubmissions = useMemo(() => {
         const startIndex = (currentPage - 1) * itemsPerPage;
@@ -208,26 +233,39 @@ const Forms: React.FC = () => {
 
     const totalPages = Math.ceil(filteredSubmissions.length / itemsPerPage);
 
+    const totalInspected = useMemo(() => filteredSubmissions.reduce((acc, s) => acc + (s.cantTotal || 0), 0), [filteredSubmissions]);
+    const totalRetained = useMemo(() => filteredSubmissions.reduce((acc, s) => acc + (s.cantRetenida || 0), 0), [filteredSubmissions]);
+    const compliancePct = useMemo(() => {
+        const total = filteredSubmissions.reduce((acc, s) => acc + (s.cantTotal || 0), 0);
+        if (total === 0) return 100;
+        const retained = filteredSubmissions.reduce((acc, s) => acc + (s.cantRetenida || 0), 0);
+        return Math.round((1 - (retained / total)) * 100);
+    }, [filteredSubmissions]);
+
     useEffect(() => {
         setCurrentPage(1);
-    }, [globalSearch, columnFilters, filterId]);
+    }, [globalSearch, columnFilters, filterId, selectedAreaFilter]);
 
     const location = useLocation();
+    const navigate = useNavigate();
 
     useEffect(() => {
         fetchInspections();
     }, []);
 
     useEffect(() => {
-        if (location.state) {
-            if (location.state.filterId) {
-                setFilterId(location.state.filterId);
-                // Optional: Automatically open edit mode
-                setEditingId(location.state.filterId);
-            }
-            if (location.state.editingId && !location.state.filterId) {
-                // Fallback for old calls if any
-                setEditingId(location.state.editingId);
+        if (location.state && submissions.length > 0) {
+            const targetId = location.state.filterId || location.state.editingId;
+            if (targetId) {
+                const sub = submissions.find(s => s.id === targetId);
+                if (sub) {
+                    const { id, ...data } = sub;
+                    setFormData(data);
+                    setEditingId(id);
+                    setFilterId(id);
+                    setActiveFormType('general');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
             }
         }
     }, [location.state, submissions]);
@@ -464,6 +502,14 @@ const Forms: React.FC = () => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
+    const handleCloseForm = () => {
+        setActiveFormType('none');
+        setEditingId(null);
+        setFilterId(null);
+        setFormData(INITIAL_FORM_DATA);
+        navigate('/quality/forms', { replace: true, state: {} });
+    };
+
     const handleDelete = async (id: string | string[]) => {
         const isBulk = Array.isArray(id);
         const idsToDelete = isBulk ? id : [id];
@@ -602,6 +648,9 @@ const Forms: React.FC = () => {
             fetchInspections();
             setFormData(INITIAL_FORM_DATA);
             setActiveFormType('none');
+            setEditingId(null);
+            setFilterId(null);
+            navigate('/quality/forms', { replace: true, state: {} });
 
         } catch (error) {
             console.error(error);
@@ -705,6 +754,7 @@ const Forms: React.FC = () => {
                         tableName="field_inspections"
                         onUploadComplete={fetchInspections}
                         label="Carga Masiva (Excel)"
+                        hideIcon={true}
                         mapping={(row: any) => ({
                             // Campos requeridos por la base de datos (snake_case)
                             fecha: parseExcelDate(fuzzyFind(row, ['FECHA', 'DATE'])),
@@ -738,8 +788,19 @@ const Forms: React.FC = () => {
                             { key: 'observacion', label: 'OBSERVACIÓN' }
                         ]}
                     />
-                    <button onClick={() => setIsLinksViewOpen(!isLinksViewOpen)} className={`flex items-center gap-2 px-4 py-2.5 ${isLinksViewOpen ? 'bg-slate-300 dark:bg-slate-600' : 'bg-[#4b5563] hover:bg-[#374151]'} text-white rounded-lg font-bold text-xs shadow-md transition-all`}><LinkIcon /> Enlaces Externos</button>
-                    <button onClick={() => setActiveFormType('general')} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-500/20 active:scale-95 transition-all"><PlusIcon /> Nueva Inspección</button>
+                    <button onClick={() => setIsLinksViewOpen(!isLinksViewOpen)} className={`flex items-center gap-2 px-4 py-2.5 ${isLinksViewOpen ? 'bg-slate-300 dark:bg-slate-600' : 'bg-[#4b5563] hover:bg-[#374151]'} text-white rounded-lg font-bold text-xs shadow-md transition-all`}>Enlaces Externos</button>
+                    <button
+                        onClick={() => {
+                            setEditingId(null);
+                            setFilterId(null);
+                            setFormData(INITIAL_FORM_DATA);
+                            setActiveFormType('general');
+                            navigate('/quality/forms', { replace: true, state: {} });
+                        }}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-500/20 active:scale-95 transition-all"
+                    >
+                        Nueva Inspección
+                    </button>
                 </div>
             </div>
 
@@ -784,7 +845,7 @@ const Forms: React.FC = () => {
                             </h2>
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-9 opacity-60">IA + Captura Semántica por Voz</p>
                         </div>
-                        <button onClick={() => setActiveFormType('none')} className="text-slate-300 hover:text-rose-500 transition-colors text-3xl font-light">&times;</button>
+                        <button onClick={handleCloseForm} className="text-slate-300 hover:text-rose-500 transition-colors text-3xl font-light">&times;</button>
                     </div>
                     <form onSubmit={handleSubmitGeneral} className="space-y-8">
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
@@ -866,7 +927,7 @@ const Forms: React.FC = () => {
                                 </div>
 
                                 <div className="flex justify-end gap-3 pt-4">
-                                    <button type="button" onClick={() => setActiveFormType('none')} className="px-8 py-4 bg-slate-100 dark:bg-white/5 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest">Cancelar</button>
+                                    <button type="button" onClick={handleCloseForm} className="px-8 py-4 bg-slate-100 dark:bg-white/5 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest">Cancelar</button>
                                     <button
                                         type="submit"
                                         disabled={formData.isLocked}
@@ -883,46 +944,88 @@ const Forms: React.FC = () => {
             )}
 
             {activeFormType === 'none' && (
-                <div className="premium-card overflow-hidden animate-fade-in">
-                    <div className="p-8 bg-slate-50 dark:bg-white/5 border-b dark:border-white/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                        <h3 className="text-xl font-black uppercase tracking-tighter">Historial Maestro de Inspecciones</h3>
-                        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                            {/* Mobile-only Select All Toggle */}
-                            <div className="md:hidden flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-white/5 rounded-lg border dark:border-white/10">
-                                <input
-                                    type="checkbox"
-                                    checked={filteredSubmissions.length > 0 && selectedIds.size === filteredSubmissions.length}
-                                    onChange={toggleSelectAll}
-                                    className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
-                                />
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Todo</span>
-                            </div>
+                <div className="premium-card overflow-hidden animate-fade-in border border-slate-200 dark:border-white/[0.08] shadow-2xl rounded-3xl bg-white dark:bg-[#0a0e1a]">
 
+                    {/* EXCEL QUICK ACTIONS TOOLBAR */}
+                    <div className="bg-slate-50 dark:bg-[#0e1220] border-b border-slate-200 dark:border-white/[0.06] p-3 flex flex-wrap items-center justify-between gap-4">
+                        <div className="flex items-center gap-2">
+                            {/* Delete selected */}
                             {selectedIds.size > 0 && (
                                 <button
                                     onClick={() => handleDelete(Array.from(selectedIds))}
                                     disabled={loading}
-                                    className={`px-4 py-2 ${loading ? 'bg-slate-400' : 'bg-rose-600 shadow-lg shadow-rose-900/20'} text-white rounded-xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-2`}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-black text-[10px] uppercase tracking-widest active:scale-95 transition-all shadow-sm"
                                 >
-                                    {loading ? <RefreshIcon className="animate-spin scale-75" /> : <TrashIcon className="scale-75" />}
-                                    {loading ? 'Borrando...' : `Eliminar (${selectedIds.size})`}
+                                    Borrar Filas ({selectedIds.size})
                                 </button>
                             )}
-                            <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 rounded-xl shadow-inner border dark:border-white/5 flex-grow md:flex-initial">
-                                <input
-                                    className="bg-transparent border-none outline-none text-xs font-bold uppercase w-full md:w-48 placeholder:text-slate-400"
-                                    placeholder="BUSCAR..."
-                                    value={globalSearch}
-                                    onChange={(e) => setGlobalSearch(e.target.value)}
-                                />
-                                <SearchIcon className="text-slate-400 cursor-pointer hover:text-sky-600 transition-colors" />
-                            </div>
+
+                            <button 
+                                onClick={fetchInspections} 
+                                disabled={loading}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-200 dark:bg-white/5 hover:bg-slate-300 text-slate-700 dark:text-slate-200 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all disabled:opacity-50"
+                            >
+                                {loading ? 'Actualizando...' : 'Recargar'}
+                            </button>
+
+                             {/* Dropdown Filter for Process Areas next to Recargar */}
+                            <select
+                                value={selectedAreaFilter}
+                                onChange={(e) => setSelectedAreaFilter(e.target.value)}
+                                className="px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/[0.06] text-slate-700 dark:text-slate-200 rounded-lg font-black text-[10px] uppercase tracking-widest outline-none shadow-sm cursor-pointer hover:border-slate-300 dark:hover:border-white/10 transition-colors"
+                            >
+                                <option value="">TODAS LAS ÁREAS</option>
+                                {uniqueAreas.map(area => (
+                                    <option key={area} value={area}>{area}</option>
+                                ))}
+                            </select>
+
+                            {/* Excel-like Sorting buttons (arrows) next to Area filter */}
+                            <div className="h-5 w-px bg-slate-200 dark:bg-white/[0.06] mx-1"></div>
+                            
+                            <button
+                                type="button"
+                                onClick={() => setSortConfig({ key: 'fecha', direction: 'desc' })}
+                                className={`px-2.5 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-1 ${
+                                    sortConfig.key === 'fecha' && sortConfig.direction === 'desc'
+                                        ? 'bg-indigo-600 text-white shadow-sm'
+                                        : 'bg-slate-200 dark:bg-white/5 text-slate-700 dark:text-slate-200 hover:bg-slate-300'
+                                }`}
+                                title="Ordenar de más recientes a más antiguos (Recientes)"
+                            >
+                                ↓ RECIENTES
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setSortConfig({ key: 'fecha', direction: 'asc' })}
+                                className={`px-2.5 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-1 ${
+                                    sortConfig.key === 'fecha' && sortConfig.direction === 'asc'
+                                        ? 'bg-indigo-600 text-white shadow-sm'
+                                        : 'bg-slate-200 dark:bg-white/5 text-slate-700 dark:text-slate-200 hover:bg-slate-300'
+                                }`}
+                                title="Ordenar de más antiguos a más recientes (Antiguos)"
+                            >
+                                ↑ ANTIGUOS
+                            </button>
+                        </div>
+
+                        {/* Search input in quick actions toolbar instead of formula bar */}
+                        <div className="flex items-center gap-1.5 px-3 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/[0.06] rounded-lg min-w-[200px] shadow-sm">
+                            <input
+                                className="bg-transparent border-none outline-none text-[10px] font-bold uppercase w-full placeholder:text-slate-400 text-slate-700 dark:text-slate-300"
+                                placeholder="BUSCAR EN HOJA..."
+                                value={globalSearch}
+                                onChange={(e) => setGlobalSearch(e.target.value)}
+                            />
+                            <SearchIcon className="text-slate-400 scale-75 cursor-pointer hover:text-sky-600 transition-colors" />
                         </div>
                     </div>
 
+                    
                     {/* VISTA MÓVIL: TARJETAS */}
                     <div className="md:hidden p-4 space-y-4">
-                        {loading ? (
+                        {loading && submissions.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-20 gap-4">
                                 <RefreshIcon className="animate-spin text-indigo-500" />
                                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Consultando registros...</p>
@@ -973,133 +1076,158 @@ const Forms: React.FC = () => {
                                         <span className="text-[10px] font-bold uppercase">{sub.responsable || sub.reviso}</span>
                                     </div>
                                     <div className="flex gap-2">
-                                        <button onClick={() => handleEdit(sub)} className="p-3 bg-white dark:bg-white/5 text-slate-400 rounded-xl hover:text-sky-600 transition-all"><EditIcon /></button>
-                                        <button onClick={() => handleDelete(sub.id)} className="p-3 bg-white dark:bg-white/5 text-slate-400 rounded-xl hover:text-rose-600 transition-all"><TrashIcon /></button>
+                                        <button onClick={() => handleEdit(sub)} className="px-3 py-1.5 bg-white dark:bg-white/5 text-sky-600 dark:text-sky-400 font-black text-[9px] uppercase tracking-wider rounded hover:underline">Editar</button>
+                                        <button onClick={() => handleDelete(sub.id)} className="px-3 py-1.5 bg-white dark:bg-white/5 text-rose-600 dark:text-rose-400 font-black text-[9px] uppercase tracking-wider rounded hover:underline">Eliminar</button>
                                     </div>
                                 </div>
                             </div>
                         ))}
                     </div>
 
-                    {/* VISTA ESCRITORIO: TABLA */}
-                    <div className="hidden md:block overflow-x-auto pb-4">
-                        <table className="w-full min-w-[2000px] text-left border-collapse text-[10px] table-fixed">
+                    {/* VISTA ESCRITORIO: TABLA (EXCEL SPREADSHEET GRID) */}
+                    <div className="hidden md:block overflow-x-auto pb-4 custom-scrollbar">
+                        <table className="w-full min-w-[2200px] text-left border-collapse text-[10px] table-fixed border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#0a0e1a]">
                             <thead>
-                                <tr className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-black tracking-wider border-b border-white/10">
-                                    <th style={{ width: columnWidths.checkbox, minWidth: columnWidths.checkbox }} className="px-4 py-5 border-r border-white/10 text-center group cursor-pointer hover:bg-white/10 transition-colors relative" onClick={() => handleSort('fecha')}>
+                                <tr className="bg-slate-100 dark:bg-[#151a2d] text-slate-700 dark:text-slate-200 font-extrabold border-b border-slate-200 dark:border-white/[0.08] select-none">
+                                    {/* Excel Row Index Header */}
+                                    <th style={{ width: 40 }} className="px-2 py-3 bg-slate-200/50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-center font-black border-r border-b border-slate-200 dark:border-white/[0.08]">
+                                        #
+                                    </th>
+                                    <th style={{ width: columnWidths.checkbox, minWidth: columnWidths.checkbox }} className="px-4 py-3 border-r border-b border-slate-200 dark:border-white/[0.08] text-center group cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors relative">
                                         <div className="flex flex-col items-center justify-center gap-0.5 h-full">
                                             <input
                                                 type="checkbox"
                                                 checked={selectedIds.size > 0 && selectedIds.size === filteredSubmissions.length}
                                                 onChange={(e) => { e.stopPropagation(); toggleSelectAll(); }}
-                                                className="size-4 rounded border-white/20 bg-transparent text-sky-600 focus:ring-sky-500 mb-1 cursor-pointer"
+                                                className="size-4 rounded border-slate-300 dark:border-slate-700 bg-transparent text-sky-600 focus:ring-sky-500 mb-1 cursor-pointer"
                                             />
                                             <div className="flex flex-col -space-y-1">
-                                                <span className={`text-[8px] leading-none ${sortConfig.key === 'fecha' && sortConfig.direction === 'asc' ? 'text-white' : 'text-white/40'}`}>▲</span>
-                                                <span className={`text-[8px] leading-none ${sortConfig.key === 'fecha' && sortConfig.direction === 'desc' ? 'text-white' : 'text-white/40'}`}>▼</span>
+                                                <span className={`text-[7px] leading-none ${sortConfig.key === 'fecha' && sortConfig.direction === 'asc' ? 'text-indigo-600' : 'text-slate-400'}`}>▲</span>
+                                                <span className={`text-[7px] leading-none ${sortConfig.key === 'fecha' && sortConfig.direction === 'desc' ? 'text-indigo-600' : 'text-slate-400'}`}>▼</span>
                                             </div>
                                         </div>
                                         <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('checkbox', e)} />
                                     </th>
-                                    <th style={{ width: columnWidths.fecha, minWidth: columnWidths.fecha }} className="px-6 py-5 border-r border-white/10 uppercase cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('fecha')}>
-                                        <div className="flex items-center gap-2">Fecha {sortConfig.key === 'fecha' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    {/* Column Date */}
+                                    <th style={{ width: columnWidths.fecha, minWidth: columnWidths.fecha }} className="px-6 py-3 border-r border-b border-slate-200 dark:border-white/[0.08] uppercase cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors relative" onClick={() => handleSort('fecha')}>
+                                        Fecha {sortConfig.key === 'fecha' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                                         <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('fecha', e)} />
                                     </th>
-                                    <th style={{ width: columnWidths.areaProceso, minWidth: columnWidths.areaProceso }} className="px-6 py-5 border-r border-white/10 uppercase whitespace-nowrap cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('areaProceso')}>
-                                        <div className="flex items-center gap-2">Área de Proceso {sortConfig.key === 'areaProceso' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    {/* Column Area */}
+                                    <th style={{ width: columnWidths.areaProceso, minWidth: columnWidths.areaProceso }} className="px-6 py-3 border-r border-b border-slate-200 dark:border-white/[0.08] uppercase cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors relative" onClick={() => handleSort('areaProceso')}>
+                                        Área de Proceso {sortConfig.key === 'areaProceso' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                                         <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('areaProceso', e)} />
                                     </th>
-                                    <th style={{ width: columnWidths.op, minWidth: columnWidths.op }} className="px-6 py-5 border-r border-white/10 uppercase cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('op')}>
-                                        <div className="flex items-center gap-2">OP {sortConfig.key === 'op' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    {/* Column OP */}
+                                    <th style={{ width: columnWidths.op, minWidth: columnWidths.op }} className="px-6 py-3 border-r border-b border-slate-200 dark:border-white/[0.08] uppercase cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors relative" onClick={() => handleSort('op')}>
+                                        OP {sortConfig.key === 'op' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                                         <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('op', e)} />
                                     </th>
-                                    <th style={{ width: columnWidths.planoOpc, minWidth: columnWidths.planoOpc }} className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('planoOpc')}>
-                                        <div className="flex items-center gap-2">PLANO (OPC) {sortConfig.key === 'planoOpc' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    {/* Column Plano */}
+                                    <th style={{ width: columnWidths.planoOpc, minWidth: columnWidths.planoOpc }} className="px-6 py-3 border-r border-b border-slate-200 dark:border-white/[0.08] uppercase cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors relative" onClick={() => handleSort('planoOpc')}>
+                                        Plano (OPC) {sortConfig.key === 'planoOpc' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                                         <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('planoOpc', e)} />
                                     </th>
-                                    <th style={{ width: columnWidths.disenoReferencia, minWidth: columnWidths.disenoReferencia }} className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('disenoReferencia')}>
-                                        <div className="flex items-center gap-2">DISEÑO/REFERENCIA {sortConfig.key === 'disenoReferencia' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    {/* Column Diseño */}
+                                    <th style={{ width: columnWidths.disenoReferencia, minWidth: columnWidths.disenoReferencia }} className="px-6 py-3 border-r border-b border-slate-200 dark:border-white/[0.08] uppercase cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors relative" onClick={() => handleSort('disenoReferencia')}>
+                                        Diseño/Referencia {sortConfig.key === 'disenoReferencia' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                                         <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('disenoReferencia', e)} />
                                     </th>
-                                    <th style={{ width: columnWidths.cantTotal, minWidth: columnWidths.cantTotal }} className="px-6 py-5 border-r border-white/10 text-center cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('cantTotal')}>
-                                        <div className="flex items-center justify-center gap-2">CANT TOTAL {sortConfig.key === 'cantTotal' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    {/* Column Cant Total */}
+                                    <th style={{ width: columnWidths.cantTotal, minWidth: columnWidths.cantTotal }} className="px-6 py-3 border-r border-b border-slate-200 dark:border-white/[0.08] text-center uppercase cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors relative" onClick={() => handleSort('cantTotal')}>
+                                        Cant Total {sortConfig.key === 'cantTotal' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                                         <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('cantTotal', e)} />
                                     </th>
-                                    <th style={{ width: columnWidths.cantRetenida, minWidth: columnWidths.cantRetenida }} className="px-6 py-5 border-r border-white/10 text-center cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('cantRetenida')}>
-                                        <div className="flex items-center justify-center gap-2">CANT RETENIDA {sortConfig.key === 'cantRetenida' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    {/* Column Cant Retenida */}
+                                    <th style={{ width: columnWidths.cantRetenida, minWidth: columnWidths.cantRetenida }} className="px-6 py-3 border-r border-b border-slate-200 dark:border-white/[0.08] text-center uppercase cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors relative" onClick={() => handleSort('cantRetenida')}>
+                                        Cant Retenida {sortConfig.key === 'cantRetenida' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                                         <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('cantRetenida', e)} />
                                     </th>
-                                    <th style={{ width: columnWidths.estado, minWidth: columnWidths.estado }} className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('estado')}>
-                                        <div className="flex items-center gap-2">ESTADO {sortConfig.key === 'estado' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    {/* Column Estado */}
+                                    <th style={{ width: columnWidths.estado, minWidth: columnWidths.estado }} className="px-6 py-3 border-r border-b border-slate-200 dark:border-white/[0.08] uppercase cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors relative" onClick={() => handleSort('estado')}>
+                                        Estado {sortConfig.key === 'estado' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                                         <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('estado', e)} />
                                     </th>
-                                    <th style={{ width: columnWidths.defecto, minWidth: columnWidths.defecto }} className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('defecto')}>
-                                        <div className="flex items-center gap-2">DEFECTO {sortConfig.key === 'defecto' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    {/* Column Defecto */}
+                                    <th style={{ width: columnWidths.defecto, minWidth: columnWidths.defecto }} className="px-6 py-3 border-r border-b border-slate-200 dark:border-white/[0.08] uppercase cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors relative" onClick={() => handleSort('defecto')}>
+                                        Defecto {sortConfig.key === 'defecto' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                                         <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('defecto', e)} />
                                     </th>
-                                    <th style={{ width: columnWidths.reviso, minWidth: columnWidths.reviso }} className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('reviso')}>
-                                        <div className="flex items-center gap-2">REVISÓ {sortConfig.key === 'reviso' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    {/* Column Reviso */}
+                                    <th style={{ width: columnWidths.reviso, minWidth: columnWidths.reviso }} className="px-6 py-3 border-r border-b border-slate-200 dark:border-white/[0.08] uppercase cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors relative" onClick={() => handleSort('reviso')}>
+                                        Revisó {sortConfig.key === 'reviso' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                                         <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('reviso', e)} />
                                     </th>
-                                    <th style={{ width: columnWidths.responsable, minWidth: columnWidths.responsable }} className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('responsable')}>
-                                        <div className="flex items-center gap-2">RESPONSABLE {sortConfig.key === 'responsable' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    {/* Column Responsable */}
+                                    <th style={{ width: columnWidths.responsable, minWidth: columnWidths.responsable }} className="px-6 py-3 border-r border-b border-slate-200 dark:border-white/[0.08] uppercase cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors relative" onClick={() => handleSort('responsable')}>
+                                        Responsable {sortConfig.key === 'responsable' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                                         <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('responsable', e)} />
                                     </th>
-                                    <th style={{ width: columnWidths.accionCorrectiva, minWidth: columnWidths.accionCorrectiva }} className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('accionCorrectiva')}>
-                                        <div className="flex items-center gap-2">ACCION CORRECTIVA {sortConfig.key === 'accionCorrectiva' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    {/* Column Accion */}
+                                    <th style={{ width: columnWidths.accionCorrectiva, minWidth: columnWidths.accionCorrectiva }} className="px-6 py-3 border-r border-b border-slate-200 dark:border-white/[0.08] uppercase cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors relative" onClick={() => handleSort('accionCorrectiva')}>
+                                        Acción Correctiva {sortConfig.key === 'accionCorrectiva' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                                         <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('accionCorrectiva', e)} />
                                     </th>
-                                    <th style={{ width: columnWidths.observacion, minWidth: columnWidths.observacion }} className="px-6 py-5 border-r border-white/10 cursor-pointer hover:bg-white/10 transition-colors group relative" onClick={() => handleSort('observacion')}>
-                                        <div className="flex items-center gap-2">OBSERVACION {sortConfig.key === 'observacion' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                                    {/* Column Observacion */}
+                                    <th style={{ width: columnWidths.observacion, minWidth: columnWidths.observacion }} className="px-6 py-3 border-r border-b border-slate-200 dark:border-white/[0.08] uppercase cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors relative" onClick={() => handleSort('observacion')}>
+                                        Observación {sortConfig.key === 'observacion' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                                         <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('observacion', e)} />
                                     </th>
-                                    <th style={{ width: columnWidths.actions, minWidth: columnWidths.actions }} className="px-6 py-5 text-center border-r border-white/10 relative">
+                                    {/* Column Actions */}
+                                    <th style={{ width: columnWidths.actions, minWidth: columnWidths.actions }} className="px-6 py-3 text-center border-b border-slate-200 dark:border-white/[0.08] relative">
                                         ACCIONES
                                         <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-sky-400/50 z-10" onMouseDown={(e) => handleResizeStart('actions', e)} />
                                     </th>
                                 </tr>
 
-                                <tr className="bg-white/5 border-b dark:border-white/10">
-                                    <th className="p-2 border-r dark:border-white/5"></th>
-                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.fecha} onChange={e => setColumnFilters({ ...columnFilters, fecha: e.target.value })} /></th>
-                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.areaProceso} onChange={e => setColumnFilters({ ...columnFilters, areaProceso: e.target.value })} /></th>
-                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.op} onChange={e => setColumnFilters({ ...columnFilters, op: e.target.value })} /></th>
-                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.planoOpc} onChange={e => setColumnFilters({ ...columnFilters, planoOpc: e.target.value })} /></th>
-                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.disenoReferencia} onChange={e => setColumnFilters({ ...columnFilters, disenoReferencia: e.target.value })} /></th>
-                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30 text-center" placeholder="F..." value={columnFilters.cantTotal} onChange={e => setColumnFilters({ ...columnFilters, cantTotal: e.target.value })} /></th>
-                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30 text-center" placeholder="F..." value={columnFilters.cantRetenida} onChange={e => setColumnFilters({ ...columnFilters, cantRetenida: e.target.value })} /></th>
-                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.estado} onChange={e => setColumnFilters({ ...columnFilters, estado: e.target.value })} /></th>
-                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.defecto} onChange={e => setColumnFilters({ ...columnFilters, defecto: e.target.value })} /></th>
-                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.reviso} onChange={e => setColumnFilters({ ...columnFilters, reviso: e.target.value })} /></th>
-                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.responsable} onChange={e => setColumnFilters({ ...columnFilters, responsable: e.target.value })} /></th>
-                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.accionCorrectiva} onChange={e => setColumnFilters({ ...columnFilters, accionCorrectiva: e.target.value })} /></th>
-                                    <th className="p-2 border-r dark:border-white/5"><input className="w-full bg-transparent text-[8px] uppercase font-bold outline-none placeholder:text-white/30" placeholder="Filtrar..." value={columnFilters.observacion} onChange={e => setColumnFilters({ ...columnFilters, observacion: e.target.value })} /></th>
-                                    <th className="p-2 bg-white/5"></th>
+                                {/* Excel Row Column Filter Inputs */}
+                                <tr className="bg-slate-50 dark:bg-[#0e111e] border-b border-slate-200 dark:border-white/[0.08]">
+                                    {/* Empty index filter cell */}
+                                    <th className="p-2 border-r border-slate-200 dark:border-white/[0.08]"></th>
+                                    <th className="p-2 border-r border-slate-200 dark:border-white/[0.08]"></th>
+                                    <th className="p-1 border-r border-slate-200 dark:border-white/[0.06]"><input className="w-full bg-white dark:bg-[#1a1f30] px-2 py-1 border border-slate-200 dark:border-white/[0.06] rounded text-[8px] uppercase font-bold outline-none placeholder:text-slate-400" placeholder="Filtrar..." value={columnFilters.fecha} onChange={e => setColumnFilters({ ...columnFilters, fecha: e.target.value })} /></th>
+                                    <th className="p-1 border-r border-slate-200 dark:border-white/[0.06]"><input className="w-full bg-white dark:bg-[#1a1f30] px-2 py-1 border border-slate-200 dark:border-white/[0.06] rounded text-[8px] uppercase font-bold outline-none placeholder:text-slate-400" placeholder="Filtrar..." value={columnFilters.areaProceso} onChange={e => setColumnFilters({ ...columnFilters, areaProceso: e.target.value })} /></th>
+                                    <th className="p-1 border-r border-slate-200 dark:border-white/[0.06]"><input className="w-full bg-white dark:bg-[#1a1f30] px-2 py-1 border border-slate-200 dark:border-white/[0.06] rounded text-[8px] uppercase font-bold outline-none placeholder:text-slate-400" placeholder="Filtrar..." value={columnFilters.op} onChange={e => setColumnFilters({ ...columnFilters, op: e.target.value })} /></th>
+                                    <th className="p-1 border-r border-slate-200 dark:border-white/[0.06]"><input className="w-full bg-white dark:bg-[#1a1f30] px-2 py-1 border border-slate-200 dark:border-white/[0.06] rounded text-[8px] uppercase font-bold outline-none placeholder:text-slate-400" placeholder="Filtrar..." value={columnFilters.planoOpc} onChange={e => setColumnFilters({ ...columnFilters, planoOpc: e.target.value })} /></th>
+                                    <th className="p-1 border-r border-slate-200 dark:border-white/[0.06]"><input className="w-full bg-white dark:bg-[#1a1f30] px-2 py-1 border border-slate-200 dark:border-white/[0.06] rounded text-[8px] uppercase font-bold outline-none placeholder:text-slate-400" placeholder="Filtrar..." value={columnFilters.disenoReferencia} onChange={e => setColumnFilters({ ...columnFilters, disenoReferencia: e.target.value })} /></th>
+                                    <th className="p-1 border-r border-slate-200 dark:border-white/[0.06]"><input className="w-full bg-white dark:bg-[#1a1f30] px-2 py-1 border border-slate-200 dark:border-white/[0.06] rounded text-[8px] uppercase font-bold outline-none placeholder:text-slate-400 text-center" placeholder="F..." value={columnFilters.cantTotal} onChange={e => setColumnFilters({ ...columnFilters, cantTotal: e.target.value })} /></th>
+                                    <th className="p-1 border-r border-slate-200 dark:border-white/[0.06]"><input className="w-full bg-white dark:bg-[#1a1f30] px-2 py-1 border border-slate-200 dark:border-white/[0.06] rounded text-[8px] uppercase font-bold outline-none placeholder:text-slate-400 text-center" placeholder="F..." value={columnFilters.cantRetenida} onChange={e => setColumnFilters({ ...columnFilters, cantRetenida: e.target.value })} /></th>
+                                    <th className="p-1 border-r border-slate-200 dark:border-white/[0.06]"><input className="w-full bg-white dark:bg-[#1a1f30] px-2 py-1 border border-slate-200 dark:border-white/[0.06] rounded text-[8px] uppercase font-bold outline-none placeholder:text-slate-400" placeholder="Filtrar..." value={columnFilters.estado} onChange={e => setColumnFilters({ ...columnFilters, estado: e.target.value })} /></th>
+                                    <th className="p-1 border-r border-slate-200 dark:border-white/[0.06]"><input className="w-full bg-white dark:bg-[#1a1f30] px-2 py-1 border border-slate-200 dark:border-white/[0.06] rounded text-[8px] uppercase font-bold outline-none placeholder:text-slate-400" placeholder="Filtrar..." value={columnFilters.defecto} onChange={e => setColumnFilters({ ...columnFilters, defecto: e.target.value })} /></th>
+                                    <th className="p-1 border-r border-slate-200 dark:border-white/[0.06]"><input className="w-full bg-white dark:bg-[#1a1f30] px-2 py-1 border border-slate-200 dark:border-white/[0.06] rounded text-[8px] uppercase font-bold outline-none placeholder:text-slate-400" placeholder="Filtrar..." value={columnFilters.reviso} onChange={e => setColumnFilters({ ...columnFilters, reviso: e.target.value })} /></th>
+                                    <th className="p-1 border-r border-slate-200 dark:border-white/[0.06]"><input className="w-full bg-white dark:bg-[#1a1f30] px-2 py-1 border border-slate-200 dark:border-white/[0.06] rounded text-[8px] uppercase font-bold outline-none placeholder:text-slate-400" placeholder="Filtrar..." value={columnFilters.responsable} onChange={e => setColumnFilters({ ...columnFilters, responsable: e.target.value })} /></th>
+                                    <th className="p-1 border-r border-slate-200 dark:border-white/[0.06]"><input className="w-full bg-white dark:bg-[#1a1f30] px-2 py-1 border border-slate-200 dark:border-white/[0.06] rounded text-[8px] uppercase font-bold outline-none placeholder:text-slate-400" placeholder="Filtrar..." value={columnFilters.accionCorrectiva} onChange={e => setColumnFilters({ ...columnFilters, accionCorrectiva: e.target.value })} /></th>
+                                    <th className="p-1 border-r border-slate-200 dark:border-white/[0.06]"><input className="w-full bg-white dark:bg-[#1a1f30] px-2 py-1 border border-slate-200 dark:border-white/[0.06] rounded text-[8px] uppercase font-bold outline-none placeholder:text-slate-400" placeholder="Filtrar..." value={columnFilters.observacion} onChange={e => setColumnFilters({ ...columnFilters, observacion: e.target.value })} /></th>
+                                    <th className="p-1 bg-white/5"></th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                                {loading ? (
-                                    <tr><td colSpan={15} className="px-8 py-24 text-center opacity-50"><p className="font-bold text-sm tracking-tight uppercase">Cargando inspecciones...</p></td></tr>
+                            <tbody className="divide-y divide-slate-200 dark:divide-white/[0.08]">
+                                {loading && submissions.length === 0 ? (
+                                    <tr><td colSpan={16} className="px-8 py-24 text-center text-slate-400 uppercase font-extrabold select-none">Cargando inspecciones...</td></tr>
                                 ) : paginatedSubmissions.length === 0 ? (
-                                    <tr><td colSpan={15} className="px-8 py-24 text-center opacity-20"><p className="font-bold text-sm tracking-tight uppercase">Sin resultados para los filtros actuales</p></td></tr>
-                                ) : paginatedSubmissions.map(sub => (
-                                    <tr key={sub.id} className={`hover:bg-slate-50 dark:hover:bg-white/5 transition-all text-[10px] font-bold ${selectedIds.has(sub.id) ? 'bg-sky-50/50 dark:bg-sky-900/10' : ''}`}>
-                                        <td style={{ width: columnWidths.checkbox }} className="px-4 py-4 text-center border-r dark:border-white/5 truncate">
+                                    <tr><td colSpan={16} className="px-8 py-24 text-center text-slate-400 uppercase font-extrabold select-none">Sin resultados para los filtros actuales</td></tr>
+                                ) : paginatedSubmissions.map((sub, idx) => (
+                                    <tr key={sub.id} className={`hover:bg-slate-50 dark:hover:bg-white/5 transition-all text-[10px] font-bold ${selectedIds.has(sub.id) ? 'bg-sky-50/50 dark:bg-sky-900/10' : ''} ${idx % 2 === 0 ? 'bg-white dark:bg-[#0a0e1a]' : 'bg-slate-50/20 dark:bg-white/[0.01]'}`}>
+                                        {/* Excel Row Index Label */}
+                                        <td className="bg-slate-100/50 dark:bg-[#111524] text-slate-400 dark:text-slate-500 text-center font-extrabold border-r border-b border-slate-200 dark:border-white/[0.08] select-none py-2.5">
+                                            {(currentPage - 1) * itemsPerPage + idx + 1}
+                                        </td>
+                                        <td style={{ width: columnWidths.checkbox }} className="text-center border-r border-b border-slate-200 dark:border-white/[0.06] py-2.5 truncate">
                                             <input
                                                 type="checkbox"
                                                 checked={selectedIds.has(sub.id)}
                                                 onChange={() => toggleSelectRow(sub.id)}
-                                                className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                                                className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
                                             />
                                         </td>
-                                        <td style={{ width: columnWidths.fecha }} className="px-6 py-4 border-r dark:border-white/5 font-bold text-black dark:text-white uppercase truncate" title={sub.fecha}>{sub.fecha}</td>
-                                        <td style={{ width: columnWidths.areaProceso }} className="px-6 py-4 uppercase border-r dark:border-white/5 font-black text-black dark:text-white truncate" title={sub.areaProceso}>{sub.areaProceso}</td>
-                                        <td style={{ width: columnWidths.op }} className="px-6 py-4 font-mono font-bold text-black dark:text-white uppercase border-r dark:border-white/5 truncate" title={sub.op}>{sub.op}</td>
-                                        <td style={{ width: columnWidths.planoOpc }} className="px-6 py-4 text-black dark:text-white font-bold uppercase border-r dark:border-white/5 text-center truncate" title={sub.planoOpc || '-'}>{sub.planoOpc || '-'}</td>
-                                        <td style={{ width: columnWidths.disenoReferencia }} className="px-6 py-4 text-black dark:text-white font-black uppercase text-[9px] tracking-wider border-r dark:border-white/5 truncate" title={sub.disenoReferencia}>{sub.disenoReferencia}</td>
-                                        <td style={{ width: columnWidths.cantTotal }} className="px-6 py-4 text-center font-bold text-black dark:text-white border-r dark:border-white/5 truncate">{sub.cantTotal}</td>
-                                        <td style={{ width: columnWidths.cantRetenida }} className={`px-6 py-4 text-center font-black border-r dark:border-white/5 truncate ${sub.cantRetenida > 0 ? 'text-rose-600' : 'text-black dark:text-white'}`}>{sub.cantRetenida}</td>
-                                        <td style={{ width: columnWidths.estado }} className="px-6 py-4 text-center border-r dark:border-white/5 truncate">
+                                        <td style={{ width: columnWidths.fecha }} className="px-6 border-r border-b border-slate-200 dark:border-white/[0.06] py-2.5 font-bold text-slate-800 dark:text-slate-200 uppercase truncate" title={sub.fecha}>{sub.fecha}</td>
+                                        <td style={{ width: columnWidths.areaProceso }} className="px-6 uppercase border-r border-b border-slate-200 dark:border-white/[0.06] py-2.5 font-black text-slate-900 dark:text-white truncate" title={sub.areaProceso}>{sub.areaProceso}</td>
+                                        <td style={{ width: columnWidths.op }} className="px-6 py-2.5 font-mono font-bold text-slate-900 dark:text-white border-r border-b border-slate-200 dark:border-white/[0.06] truncate" title={sub.op}>{sub.op}</td>
+                                        <td style={{ width: columnWidths.planoOpc }} className="px-6 py-2.5 text-slate-900 dark:text-white font-bold border-r border-b border-slate-200 dark:border-white/[0.06] text-center truncate" title={sub.planoOpc || '-'}>{sub.planoOpc || '-'}</td>
+                                        <td style={{ width: columnWidths.disenoReferencia }} className="px-6 py-2.5 text-slate-900 dark:text-white font-black uppercase text-[9px] tracking-wider border-r border-b border-slate-200 dark:border-white/[0.06] truncate" title={sub.disenoReferencia}>{sub.disenoReferencia}</td>
+                                        <td style={{ width: columnWidths.cantTotal }} className="px-6 py-2.5 text-center font-bold text-slate-900 dark:text-white border-r border-b border-slate-200 dark:border-white/[0.06] truncate">{sub.cantTotal}</td>
+                                        <td style={{ width: columnWidths.cantRetenida }} className={`px-6 py-2.5 text-center font-black border-r border-b border-slate-200 dark:border-white/[0.06] truncate ${sub.cantRetenida > 0 ? 'text-rose-600 dark:text-rose-400 bg-rose-500/5' : 'text-slate-900 dark:text-white'}`}>{sub.cantRetenida}</td>
+                                        <td style={{ width: columnWidths.estado }} className="px-6 py-2.5 text-center border-r border-b border-slate-200 dark:border-white/[0.06] truncate">
                                             <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase border ${(sub.estado || '').toUpperCase() === 'APROBADO' ? 'bg-emerald-400 text-black border-emerald-500' :
                                                 (sub.estado || '').toUpperCase() === 'REPROCESAR' ? 'bg-red-600 text-white border-red-700' :
                                                     (sub.estado || '').toUpperCase() === 'RECHAZADO' ? 'bg-rose-100 text-rose-800 border-rose-200' :
@@ -1108,22 +1236,23 @@ const Forms: React.FC = () => {
                                                 {sub.estado}
                                             </span>
                                         </td>
-                                        <td style={{ width: columnWidths.defecto }} className={`px-6 py-4 uppercase border-r dark:border-white/5 font-bold truncate ${['NINGUNO', 'NA'].includes((sub.defecto || '').toUpperCase()) ? 'text-black dark:text-white' : 'text-rose-600'}`} title={sub.defecto}>{sub.defecto}</td>
-                                        <td style={{ width: columnWidths.reviso }} className="px-6 py-4 uppercase text-black dark:text-white font-bold border-r dark:border-white/5 truncate" title={sub.reviso}>{sub.reviso}</td>
-                                        <td style={{ width: columnWidths.responsable }} className="px-6 py-4 uppercase text-black dark:text-white font-bold border-r dark:border-white/5 truncate" title={sub.responsable}>{sub.responsable}</td>
-                                        <td style={{ width: columnWidths.accionCorrectiva }} className={`px-6 py-4 border-r dark:border-white/5 font-bold truncate ${(sub.accionCorrectiva || '').toUpperCase() === 'INTERNA' ? 'text-amber-500' :
+                                        <td style={{ width: columnWidths.defecto }} className={`px-6 py-2.5 uppercase border-r border-b border-slate-200 dark:border-white/[0.06] font-bold truncate ${['NINGUNO', 'NA'].includes((sub.defecto || '').toUpperCase()) ? 'text-slate-800 dark:text-slate-200' : 'text-rose-600 dark:text-rose-400'}`} title={sub.defecto}>{sub.defecto}</td>
+                                        <td style={{ width: columnWidths.reviso }} className="px-6 py-2.5 uppercase text-slate-800 dark:text-slate-200 font-bold border-r border-b border-slate-200 dark:border-white/[0.06] truncate" title={sub.reviso}>{sub.reviso}</td>
+                                        <td style={{ width: columnWidths.responsable }} className="px-6 py-2.5 uppercase text-slate-800 dark:text-slate-200 font-bold border-r border-b border-slate-200 dark:border-white/[0.06] truncate" title={sub.responsable}>{sub.responsable}</td>
+                                        <td style={{ width: columnWidths.accionCorrectiva }} className={`px-6 py-2.5 border-r border-b border-slate-200 dark:border-white/[0.06] font-bold truncate ${(sub.accionCorrectiva || '').toUpperCase() === 'INTERNA' ? 'text-amber-500' :
                                             (sub.accionCorrectiva || '').toUpperCase() === 'REPOSICION' ? 'text-rose-600' :
-                                                ['NA', 'NINGUNO', '', null, undefined].includes(sub.accionCorrectiva) || (sub.accionCorrectiva || '').toUpperCase() === 'NA' ? 'text-black dark:text-white font-normal' :
+                                                ['NA', 'NINGUNO', '', null, undefined].includes(sub.accionCorrectiva) || (sub.accionCorrectiva || '').toUpperCase() === 'NA' ? 'text-slate-800 dark:text-slate-200 font-normal' :
                                                     'text-amber-500'
                                             }`} title={sub.accionCorrectiva}>{sub.accionCorrectiva}</td>
-                                        <td style={{ width: columnWidths.observacion }} className={`px-6 py-4 uppercase text-[9px] border-r dark:border-white/5 truncate ${['NA', 'NINGUNA', 'NINGUNO', ''].includes((sub.observacion || '').toUpperCase()) ? 'text-black dark:text-white' : 'text-rose-600 font-bold'}`} title={sub.observacion}>{sub.observacion}</td>
-                                        <td style={{ width: columnWidths.actions }} className="px-4 py-4 text-center truncate">
+                                        <td style={{ width: columnWidths.observacion }} className={`px-6 py-2.5 uppercase text-[9px] border-r border-b border-slate-200 dark:border-white/[0.06] truncate ${['NA', 'NINGUNA', 'NINGUNO', ''].includes((sub.observacion || '').toUpperCase()) ? 'text-slate-800 dark:text-slate-200' : 'text-rose-600 dark:text-rose-400 font-bold'}`} title={sub.observacion}>{sub.observacion}</td>
+                                        <td style={{ width: columnWidths.actions }} className="px-4 py-2.5 text-center border-b border-slate-200 dark:border-white/[0.06] truncate">
                                             <div className="flex items-center justify-center gap-2">
-                                                <button onClick={() => handleEdit(sub)} className="p-2 text-slate-800 dark:text-white hover:text-sky-600 transition-colors" title="Editar">
-                                                    <EditIcon className="scale-90" />
+                                                <button onClick={() => handleEdit(sub)} className="text-sky-600 dark:text-sky-400 hover:underline font-bold text-[9px] uppercase" title="Editar">
+                                                    Editar
                                                 </button>
-                                                <button onClick={() => handleDelete(sub.id)} className="p-2 text-slate-800 dark:text-white hover:text-rose-600 transition-colors" title="Eliminar">
-                                                    <TrashIcon className="scale-90" />
+                                                <span className="text-slate-300 dark:text-slate-700">|</span>
+                                                <button onClick={() => handleDelete(sub.id)} className="text-rose-600 dark:text-rose-400 hover:underline font-bold text-[9px] uppercase" title="Eliminar">
+                                                    Eliminar
                                                 </button>
                                             </div>
                                         </td>
@@ -1133,9 +1262,26 @@ const Forms: React.FC = () => {
                         </table>
                     </div>
 
-                    {/* PAGINACIÓN */}
+                    {/* EXCEL STATUS BAR (Calculated aggregates at the very bottom) */}
+                    <div className="bg-indigo-600 dark:bg-indigo-950 text-white font-mono text-[9px] uppercase py-2 px-6 flex flex-wrap items-center justify-between gap-4 border-t border-indigo-700 dark:border-indigo-900 select-none">
+                        <div className="flex items-center gap-6">
+                            <span className="font-extrabold flex items-center gap-1.5">RECUENTO: <span className="text-white bg-indigo-800 dark:bg-indigo-900 px-2 py-0.5 rounded font-black">{filteredSubmissions.length}</span></span>
+                            <span className="font-extrabold flex items-center gap-1.5">SUMA (TOTAL): <span className="text-white bg-indigo-800 dark:bg-indigo-900 px-2 py-0.5 rounded font-black">{totalInspected}</span></span>
+                            <span className="font-extrabold flex items-center gap-1.5">SUMA (RETENIDA): <span className="text-rose-200 bg-indigo-800 dark:bg-indigo-900 px-2 py-0.5 rounded font-black">{totalRetained}</span></span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <span className="font-extrabold flex items-center gap-1.5">
+                                CUMPLIMIENTO:
+                                <span className={`px-2 py-0.5 rounded font-black ${compliancePct >= 90 ? 'bg-emerald-600 text-white' : compliancePct >= 75 ? 'bg-amber-600 text-white' : 'bg-rose-600 text-white'}`}>
+                                    {compliancePct}%
+                                </span>
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* PAGINACIÓN (Spreedsheet Page Selector) */}
                     {totalPages > 1 && (
-                        <div className="flex flex-col md:flex-row justify-between items-center gap-4 py-6 px-8 bg-slate-50 dark:bg-black/10 border-t dark:border-white/5">
+                        <div className="flex flex-col md:flex-row justify-between items-center gap-4 py-4 px-8 bg-slate-50 dark:bg-black/10 border-t dark:border-white/[0.06]">
                             <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                                 Mostrando {Math.min(filteredSubmissions.length, (currentPage - 1) * itemsPerPage + 1)} - {Math.min(filteredSubmissions.length, currentPage * itemsPerPage)} de {filteredSubmissions.length} registros
                             </div>
@@ -1151,7 +1297,6 @@ const Forms: React.FC = () => {
                                 <div className="flex items-center gap-1">
                                     {[...Array(totalPages)].map((_, i) => {
                                         const page = i + 1;
-                                        // Show first, last, and pages around current
                                         if (page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1)) {
                                             return (
                                                 <button

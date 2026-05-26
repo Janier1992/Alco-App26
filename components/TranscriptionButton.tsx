@@ -44,7 +44,11 @@ const TranscriptionButton: React.FC<TranscriptionButtonProps> = ({ onTranscripti
             setIsRecording(true);
             addNotification({ type: 'info', title: 'ESCUCHANDO', message: 'Dictado técnico en curso...' });
         } catch (err: any) {
-            console.error("Error al acceder al micrófono:", err);
+            if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError' || err.message?.includes('device not found')) {
+                console.warn("Acceso al micrófono no disponible: Dispositivo físico no encontrado.");
+            } else {
+                console.error("Error al acceder al micrófono:", err);
+            }
             let errorMessage = 'Ocurrió un error al intentar acceder al micrófono.';
             if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError' || err.message?.includes('device not found')) {
                 errorMessage = 'No se encontró ningún micrófono conectado o habilitado en su dispositivo.';
