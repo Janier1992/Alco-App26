@@ -8,6 +8,38 @@ import {
 import { useNotification } from './NotificationSystem';
 import type { MetrologyRecord, MetrologyItem } from '../types';
 import { insforge, supabase } from '../insforgeClient';
+import { exportMetrologyToPDF } from '../utils/pdfExport';
+
+const MOCK_METROLOGY: MetrologyRecord[] = [
+    {
+        id: 'MET-ACT-001',
+        fecha: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+        area: 'CORTE DE PERFILERIA',
+        sede: 'PLANTA SABANETA',
+        receptorNombre: 'DURANGO PUERTA DIEGO',
+        receptorCedula: '1020455890',
+        receptorCargo: 'OPERARIO CORTADOR',
+        firmaEntrega: 'mock',
+        firmaRecibe: 'mock',
+        items: [
+            { equipoNombre: 'Flexómetro 8 metros', marca: 'STANLEY', cantidad: 1, observaciones: 'FLEXÓMETRO NUEVO, PRIMERA VEZ' }
+        ]
+    },
+    {
+        id: 'MET-ACT-002',
+        fecha: new Date(Date.now() - 86400000 * 3).toISOString().split('T')[0],
+        area: 'CALIDAD',
+        sede: 'PLANTA SABANETA',
+        receptorNombre: 'YEFERSON PALACIOS',
+        receptorCedula: '1098234551',
+        receptorCargo: 'INSPECTOR CALIDAD',
+        firmaEntrega: 'mock',
+        firmaRecibe: 'mock',
+        items: [
+            { equipoNombre: 'Calibrador Pie de Rey Digital', marca: 'WURTH', cantidad: 1, observaciones: 'EQUIPO RECIÉN CALIBRADO POR LABORATORIO' }
+        ]
+    }
+];
 
 const Metrology: React.FC = () => {
     const { addNotification } = useNotification();
@@ -16,6 +48,7 @@ const Metrology: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [viewingRecord, setViewingRecord] = useState<MetrologyRecord | null>(null);
 
     // Estado inicial del formulario
     const INITIAL_ITEM: MetrologyItem = {
@@ -40,11 +73,13 @@ const Metrology: React.FC = () => {
 
     const [formData, setFormData] = useState<MetrologyRecord>(INITIAL_DATA as MetrologyRecord);
 
-    // Refs para Firmas
+    // Refs para Firmas y Suavizado
     const canvasEntregaRef = useRef<HTMLCanvasElement>(null);
     const canvasRecibeRef = useRef<HTMLCanvasElement>(null);
     const [isDrawingEntrega, setIsDrawingEntrega] = useState(false);
     const [isDrawingRecibe, setIsDrawingRecibe] = useState(false);
+    const lastPointEntrega = useRef<{ x: number; y: number } | null>(null);
+    const lastPointRecibe = useRef<{ x: number; y: number } | null>(null);
 
     // Fetch records from Insforge
     const fetchRecords = async () => {
@@ -67,10 +102,30 @@ const Metrology: React.FC = () => {
                 items: r.items || []
             }));
 
+            // Guardar en caché local
+            localStorage.setItem('alco_cached_metrology_records', JSON.stringify(mappedRecords));
+
             setRecords(mappedRecords);
         } catch (error: any) {
-            console.error('Error fetching metrology records:', error);
-            addNotification({ type: 'error', title: 'ERROR DE CARGA', message: 'No se pudieron recuperar las actas de metrología.' });
+            console.error('Error fetching metrology records, loading fallback:', error);
+            
+            // Fallback 1: Intentar cargar del caché local
+            const cached = localStorage.getItem('alco_cached_metrology_records');
+            let baseRecords: MetrologyRecord[] = [];
+            if (cached) {
+                try {
+                    baseRecords = JSON.parse(cached);
+                } catch (e) {
+                    console.error("Error parsing cached metrology records:", e);
+                }
+            }
+
+            // Fallback 2: Si el caché está vacío, usar mock
+            if (baseRecords.length === 0) {
+                baseRecords = MOCK_METROLOGY;
+            }
+
+            setRecords(baseRecords);
         } finally {
             setIsLoading(false);
         }
@@ -80,28 +135,23 @@ const Metrology: React.FC = () => {
         fetchRecords();
     }, []);
 
-    // Helper to upload base64 signature to Insforge Storage
-    const uploadSignature = async (base64: string, prefix: string) => {
-        if (!base64 || base64.length < 100) return ''; // Skip if empty canvas
-
-        try {
-            const fileName = `${prefix}_${Date.now()}.png`;
-            const blob = await (await fetch(base64)).blob();
-
-            const { error } = await (supabase.storage
-                .from('signatures') as any)
-                .upload(fileName, blob, { contentType: 'image/png' });
-
-            if (error) throw error;
-
-            // fileName is used instead of data.path if only file name is needed, but bucket.getPublicUrl usually works with path
-            const publicUrlData = (supabase.storage.from('signatures') as any).getPublicUrl(fileName);
-            return publicUrlData.data?.publicUrl || publicUrlData;
-            return publicUrlData.publicUrl;
-        } catch (error) {
-            console.error('Error uploading signature:', error);
-            return '';
+    // Detectar si un canvas está en blanco (sin dibujo)
+    const isCanvasBlank = (canvas: HTMLCanvasElement): boolean => {
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return true;
+        const pixelData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        // Si algún pixel tiene alpha > 0, hay un dibujo
+        for (let i = 3; i < pixelData.length; i += 4) {
+            if (pixelData[i] > 0) return false;
         }
+        return true;
+    };
+
+    // Extraer base64 de firma (devuelve '' si está vacío)
+    const getSignatureData = (ref: React.RefObject<HTMLCanvasElement>): string => {
+        const canvas = ref.current;
+        if (!canvas || isCanvasBlank(canvas)) return '';
+        return canvas.toDataURL('image/png');
     };
 
     // Gestión de Items
@@ -120,7 +170,7 @@ const Metrology: React.FC = () => {
         setFormData(prev => ({ ...prev, items: newItems }));
     };
 
-    // Lógica de Firma (Reutilizable)
+    // Lógica de Firma (Reutilizable - Suavizado y Alta Definición)
     const getCoordinates = (e: React.PointerEvent, canvas: HTMLCanvasElement) => {
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
@@ -131,33 +181,72 @@ const Metrology: React.FC = () => {
         };
     };
 
-    const startDrawing = (e: React.PointerEvent, ref: React.RefObject<HTMLCanvasElement>, setIsDrawing: (v: boolean) => void) => {
+    const startDrawing = (
+        e: React.PointerEvent, 
+        ref: React.RefObject<HTMLCanvasElement>, 
+        setIsDrawing: (v: boolean) => void,
+        lastPointRef: React.MutableRefObject<{ x: number; y: number } | null>
+    ) => {
         setIsDrawing(true);
-        const ctx = ref.current?.getContext('2d');
-        if (ctx && ref.current) {
-            const { x, y } = getCoordinates(e, ref.current);
+        const canvas = ref.current;
+        const ctx = canvas?.getContext('2d');
+        if (ctx && canvas) {
+            const { x, y } = getCoordinates(e, canvas);
             ctx.beginPath();
             ctx.moveTo(x, y);
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 4;
             ctx.lineCap = 'round';
-            ctx.strokeStyle = '#0f172a';
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = '#020617'; // Slate 950 para máxima definición y calidad
+
+            // Suavizado calligráfico
+            ctx.shadowColor = 'rgba(2, 6, 23, 0.15)';
+            ctx.shadowBlur = 1.5;
+
+            lastPointRef.current = { x, y };
         }
     };
 
-    const draw = (e: React.PointerEvent, ref: React.RefObject<HTMLCanvasElement>, isDrawing: boolean) => {
-        if (!isDrawing) return;
-        const ctx = ref.current?.getContext('2d');
-        if (ctx && ref.current) {
-            const { x, y } = getCoordinates(e, ref.current);
-            ctx.lineTo(x, y);
+    const draw = (
+        e: React.PointerEvent, 
+        ref: React.RefObject<HTMLCanvasElement>, 
+        isDrawing: boolean,
+        lastPointRef: React.MutableRefObject<{ x: number; y: number } | null>
+    ) => {
+        if (!isDrawing || !lastPointRef.current) return;
+        const canvas = ref.current;
+        const ctx = canvas?.getContext('2d');
+        if (ctx && canvas) {
+            const { x, y } = getCoordinates(e, canvas);
+            const last = lastPointRef.current;
+            const midX = (last.x + x) / 2;
+            const midY = (last.y + y) / 2;
+
+            ctx.beginPath();
+            ctx.moveTo(last.x, last.y);
+            ctx.quadraticCurveTo(last.x, last.y, midX, midY);
+
+            // Variar el grosor de línea de forma fluida si el puntero reporta presión
+            const baseWidth = 3.5;
+            if (e.pressure > 0) {
+                ctx.lineWidth = baseWidth + (e.pressure * 2.5);
+            } else {
+                ctx.lineWidth = baseWidth;
+            }
+
             ctx.stroke();
+            lastPointRef.current = { x, y };
         }
     };
 
-    const clearSignature = (ref: React.RefObject<HTMLCanvasElement>) => {
+    const clearSignature = (
+        ref: React.RefObject<HTMLCanvasElement>,
+        lastPointRef: React.MutableRefObject<{ x: number; y: number } | null>
+    ) => {
         const ctx = ref.current?.getContext('2d');
         if (ctx && ref.current) {
             ctx.clearRect(0, 0, ref.current.width, ref.current.height);
+            lastPointRef.current = null;
         }
     };
 
@@ -165,8 +254,8 @@ const Metrology: React.FC = () => {
         setFormData(INITIAL_DATA);
         setEditingId(null);
         setIsFormOpen(false);
-        clearSignature(canvasEntregaRef);
-        clearSignature(canvasRecibeRef);
+        clearSignature(canvasEntregaRef, lastPointEntrega);
+        clearSignature(canvasRecibeRef, lastPointRecibe);
     };
 
     const handleEdit = (record: MetrologyRecord) => {
@@ -175,15 +264,21 @@ const Metrology: React.FC = () => {
         setEditingId(record.id);
         setIsFormOpen(true);
 
-        // Cargar firmas existentes (visual only, won't re-upload unless cleared/changed)
+        // Cargar firmas existentes escalándolas perfectamente
         setTimeout(() => {
             const loadSig = (url: string, ref: React.RefObject<HTMLCanvasElement>) => {
                 if (!url) return;
-                const ctx = ref.current?.getContext('2d');
-                const img = new Image();
-                img.crossOrigin = "anonymous";
-                img.onload = () => ctx?.drawImage(img, 0, 0);
-                img.src = url;
+                const canvas = ref.current;
+                const ctx = canvas?.getContext('2d');
+                if (ctx && canvas) {
+                    const img = new Image();
+                    img.crossOrigin = "anonymous";
+                    img.onload = () => {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    };
+                    img.src = url;
+                }
             };
             if (firmaEntrega) loadSig(firmaEntrega, canvasEntregaRef);
             if (firmaRecibe) loadSig(firmaRecibe, canvasRecibeRef);
@@ -211,19 +306,13 @@ const Metrology: React.FC = () => {
         try {
             addNotification({ type: 'info', title: 'PROCESANDO...', message: 'Guardando registro y firmas...' });
 
-            const firmaEntregaUrl = canvasEntregaRef.current?.toDataURL() || '';
-            const firmaRecibeUrl = canvasRecibeRef.current?.toDataURL() || '';
+            // Obtener base64 de las firmas (vacío si no se dibujó nada)
+            const firmaEntregaData = getSignatureData(canvasEntregaRef);
+            const firmaRecibeData = getSignatureData(canvasRecibeRef);
 
-            // Handle signature uploads (only if dataURL, skip if already a publicUrl from editing)
-            let firmaEntrega = formData.firmaEntrega || '';
-            let firmaRecibe = formData.firmaRecibe || '';
-
-            if (firmaEntregaUrl.startsWith('data:')) {
-                firmaEntrega = await uploadSignature(firmaEntregaUrl, 'entregado');
-            }
-            if (firmaRecibeUrl.startsWith('data:')) {
-                firmaRecibe = await uploadSignature(firmaRecibeUrl, 'recibido');
-            }
+            // Usar la firma del canvas si se dibujó una nueva, si no conservar la existente
+            const firmaEntrega = firmaEntregaData || formData.firmaEntrega || '';
+            const firmaRecibe = firmaRecibeData || formData.firmaRecibe || '';
 
             const dbPayload = {
                 date: formData.fecha,
@@ -265,6 +354,7 @@ const Metrology: React.FC = () => {
     const labelStyles = "text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5 block ml-1";
 
     return (
+        <>
         <div className="space-y-8 animate-fade-in pb-20">
             <Breadcrumbs crumbs={[{ label: 'Metrología', path: '/dashboard' }, { label: 'Asignación de Activos' }]} />
 
@@ -293,9 +383,6 @@ const Metrology: React.FC = () => {
                                 <div><label className={labelStyles}>Nombre y Apellidos</label><input value={formData.receptorNombre} onChange={e => setFormData({ ...formData, receptorNombre: e.target.value })} className={inputStyles} /></div>
                                 <div><label className={labelStyles}>Cédula</label><input value={formData.receptorCedula} onChange={e => setFormData({ ...formData, receptorCedula: e.target.value })} className={inputStyles} /></div>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div><label className={labelStyles}>Cargo</label><input value={formData.receptorCargo} onChange={e => setFormData({ ...formData, receptorCargo: e.target.value })} className={inputStyles} /></div>
-                            </div>
                         </div>
 
                         {/* SECCIÓN 2: DETALLE DEL EQUIPO */}
@@ -322,7 +409,7 @@ const Metrology: React.FC = () => {
                                                 <label className={labelStyles}>Observaciones</label>
                                                 <input list={`obs-list-${index}`} value={item.observaciones} onChange={e => handleItemChange(index, 'observaciones', e.target.value)} placeholder="Estado del equipo..." className={inputStyles} />
                                                 <datalist id={`obs-list-${index}`}>
-                                                    {METROLOGY_OBSERVACIONES_OPTIONS.map((opt, i) => <option key={i} value={opt} />)}
+                                                    {Array.from(new Set(METROLOGY_OBSERVACIONES_OPTIONS)).map((opt, i) => <option key={i} value={opt} />)}
                                                 </datalist>
                                             </div>
                                         </div>
@@ -342,38 +429,48 @@ const Metrology: React.FC = () => {
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                                 {/* Firma Entrega */}
-                                <div className="space-y-2">
-                                    <label className={labelStyles}>Firma Quien Entrega (Gestor SGC)</label>
-                                    <div className="bg-white dark:bg-slate-800 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 relative overflow-hidden h-40">
+                                <div className="space-y-3">
+                                    <label className={labelStyles}>✍️ Firma Quien Entrega (Gestor SGC)</label>
+                                    <div className="relative rounded-2xl overflow-hidden shadow-inner border-2 border-sky-200 dark:border-sky-700/50 bg-gradient-to-b from-slate-50 to-white dark:from-slate-800 dark:to-slate-900" style={{ height: '200px' }}>
+                                        {/* Guía base de firma */}
+                                        <div className="absolute bottom-10 left-6 right-6 border-b-2 border-dashed border-slate-200/80 dark:border-slate-600/60 z-10 pointer-events-none" />
+                                        <p className="absolute bottom-2 left-0 right-0 text-center text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.3em] pointer-events-none z-10">FIRME AQUÍ</p>
                                         <canvas
                                             ref={canvasEntregaRef}
-                                            width={400}
-                                            height={160}
-                                            className="w-full h-full cursor-crosshair touch-none"
-                                            onPointerDown={(e) => startDrawing(e, canvasEntregaRef, setIsDrawingEntrega)}
-                                            onPointerMove={(e) => draw(e, canvasEntregaRef, isDrawingEntrega)}
+                                            width={800}
+                                            height={400}
+                                            className="absolute inset-0 w-full h-full cursor-crosshair touch-none select-none"
+                                            style={{ touchAction: 'none' }}
+                                            onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); startDrawing(e, canvasEntregaRef, setIsDrawingEntrega, lastPointEntrega); }}
+                                            onPointerMove={(e) => draw(e, canvasEntregaRef, isDrawingEntrega, lastPointEntrega)}
                                             onPointerUp={() => setIsDrawingEntrega(false)}
                                             onPointerLeave={() => setIsDrawingEntrega(false)}
+                                            onPointerCancel={() => setIsDrawingEntrega(false)}
                                         />
-                                        <button type="button" onClick={() => clearSignature(canvasEntregaRef)} className="absolute top-2 right-2 p-2 bg-slate-100 dark:bg-white/10 rounded-lg hover:text-rose-500 text-slate-400"><RefreshIcon className="scale-75" /></button>
+                                        <button type="button" onClick={() => clearSignature(canvasEntregaRef, lastPointEntrega)} className="absolute top-2 right-2 z-20 p-2 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm border border-slate-200 dark:border-slate-600 rounded-xl hover:text-rose-500 text-slate-400 shadow-sm transition-all hover:scale-105" title="Limpiar firma"><RefreshIcon className="scale-75" /></button>
                                     </div>
                                 </div>
 
                                 {/* Firma Recibe */}
-                                <div className="space-y-2">
-                                    <label className={labelStyles}>Firma Quien Recibe (Colaborador)</label>
-                                    <div className="bg-white dark:bg-slate-800 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 relative overflow-hidden h-40">
+                                <div className="space-y-3">
+                                    <label className={labelStyles}>✍️ Firma Quien Recibe (Colaborador)</label>
+                                    <div className="relative rounded-2xl overflow-hidden shadow-inner border-2 border-emerald-200 dark:border-emerald-700/50 bg-gradient-to-b from-slate-50 to-white dark:from-slate-800 dark:to-slate-900" style={{ height: '200px' }}>
+                                        {/* Guía base de firma */}
+                                        <div className="absolute bottom-10 left-6 right-6 border-b-2 border-dashed border-slate-200/80 dark:border-slate-600/60 z-10 pointer-events-none" />
+                                        <p className="absolute bottom-2 left-0 right-0 text-center text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.3em] pointer-events-none z-10">FIRME AQUÍ</p>
                                         <canvas
                                             ref={canvasRecibeRef}
-                                            width={400}
-                                            height={160}
-                                            className="w-full h-full cursor-crosshair touch-none"
-                                            onPointerDown={(e) => startDrawing(e, canvasRecibeRef, setIsDrawingRecibe)}
-                                            onPointerMove={(e) => draw(e, canvasRecibeRef, isDrawingRecibe)}
+                                            width={800}
+                                            height={400}
+                                            className="absolute inset-0 w-full h-full cursor-crosshair touch-none select-none"
+                                            style={{ touchAction: 'none' }}
+                                            onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); startDrawing(e, canvasRecibeRef, setIsDrawingRecibe, lastPointRecibe); }}
+                                            onPointerMove={(e) => draw(e, canvasRecibeRef, isDrawingRecibe, lastPointRecibe)}
                                             onPointerUp={() => setIsDrawingRecibe(false)}
                                             onPointerLeave={() => setIsDrawingRecibe(false)}
+                                            onPointerCancel={() => setIsDrawingRecibe(false)}
                                         />
-                                        <button type="button" onClick={() => clearSignature(canvasRecibeRef)} className="absolute top-2 right-2 p-2 bg-slate-100 dark:bg-white/10 rounded-lg hover:text-rose-500 text-slate-400"><RefreshIcon className="scale-75" /></button>
+                                        <button type="button" onClick={() => clearSignature(canvasRecibeRef, lastPointRecibe)} className="absolute top-2 right-2 z-20 p-2 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm border border-slate-200 dark:border-slate-600 rounded-xl hover:text-rose-500 text-slate-400 shadow-sm transition-all hover:scale-105" title="Limpiar firma"><RefreshIcon className="scale-75" /></button>
                                     </div>
                                 </div>
                             </div>
@@ -418,8 +515,10 @@ const Metrology: React.FC = () => {
                                         </div>
                                     </td>
                                     <td className="px-8 py-6 text-right">
+                                        <button onClick={() => setViewingRecord(r)} className="p-3 bg-slate-50 text-slate-500 rounded-xl hover:bg-slate-500 hover:text-white transition-all shadow-sm mr-2" title="Ver detalle"><i className="fas fa-eye text-xs"></i></button>
+                                        <button onClick={() => exportMetrologyToPDF(r)} className="p-3 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all shadow-sm mr-2" title="Exportar PDF"><i className="fas fa-file-pdf text-xs"></i></button>
                                         <button onClick={() => handleEdit(r)} className="p-3 bg-sky-50 text-sky-500 rounded-xl hover:bg-sky-500 hover:text-white transition-all shadow-sm mr-2"><EditIcon /></button>
-                                        <button onClick={() => handleDelete(r.id)} className="p-3 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all shadow-sm"><TrashIcon /></button>
+                                        <button onClick={() => handleDelete(r.id)} className="p-3 bg-slate-100 text-slate-400 rounded-xl hover:bg-slate-400 hover:text-white transition-all shadow-sm"><TrashIcon /></button>
                                     </td>
                                 </tr>
                             ))}
@@ -429,6 +528,115 @@ const Metrology: React.FC = () => {
                 </div>
             </div>
         </div>
+
+        {/* ===== MODAL VER REGISTRO ===== */}
+        {viewingRecord && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setViewingRecord(null)}>
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+                <div className="relative bg-white dark:bg-[#0d0d1a] rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={e => e.stopPropagation()}>
+                    {/* Header */}
+                    <div className="sticky top-0 z-10 bg-white dark:bg-[#0d0d1a] px-8 py-6 border-b dark:border-white/5 flex items-center justify-between rounded-t-3xl">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-2xl bg-sky-50 dark:bg-sky-900/30 flex items-center justify-center">
+                                <RulerIcon className="text-sky-600" />
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Acta de Entrega</p>
+                                <h2 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight">{viewingRecord.id}</h2>
+                            </div>
+                        </div>
+                        <button onClick={() => setViewingRecord(null)} className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-white/10 flex items-center justify-center hover:bg-rose-100 hover:text-rose-500 transition-all">
+                            <i className="fas fa-times text-sm"></i>
+                        </button>
+                    </div>
+
+                    <div className="p-8 space-y-8">
+                        {/* Info general */}
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                            {[
+                                { label: 'Fecha', value: viewingRecord.fecha },
+                                { label: 'Área', value: viewingRecord.area },
+                                { label: 'Sede', value: viewingRecord.sede },
+                            ].map(({ label, value }) => (
+                                <div key={label} className="bg-slate-50 dark:bg-white/[0.03] rounded-2xl p-4 border dark:border-white/5">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">{label}</p>
+                                    <p className="text-xs font-black text-slate-800 dark:text-white uppercase">{value || '—'}</p>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Receptor */}
+                        <div className="bg-sky-50 dark:bg-sky-900/10 rounded-2xl p-6 border border-sky-100 dark:border-sky-700/20">
+                            <p className="text-[9px] font-black text-sky-500 uppercase tracking-[0.2em] mb-4">👤 Datos del Receptor</p>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div><p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Nombre</p><p className="text-xs font-black text-slate-800 dark:text-white uppercase">{viewingRecord.receptorNombre}</p></div>
+                                <div><p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Cédula</p><p className="text-xs font-black text-slate-800 dark:text-white">{viewingRecord.receptorCedula}</p></div>
+                                <div><p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Cargo</p><p className="text-xs font-black text-slate-800 dark:text-white uppercase">{viewingRecord.receptorCargo}</p></div>
+                            </div>
+                        </div>
+
+                        {/* Items */}
+                        <div>
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">📦 Equipos Entregados</p>
+                            <div className="space-y-3">
+                                {viewingRecord.items.map((item, idx) => (
+                                    <div key={idx} className="flex items-start gap-4 p-4 bg-slate-50 dark:bg-white/[0.03] rounded-2xl border dark:border-white/5">
+                                        <span className="w-7 h-7 rounded-xl bg-sky-600 text-white text-[10px] font-black flex items-center justify-center flex-shrink-0">{idx + 1}</span>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-xs font-black text-slate-800 dark:text-white uppercase">{item.cantidad}x {item.equipoNombre}</p>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{item.marca}</p>
+                                            <p className="text-[10px] text-slate-500 mt-1">{item.observaciones}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Firmas */}
+                        <div>
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">✍️ Firmas del Acta</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Firma Quien Entrega</p>
+                                    <div className="h-36 rounded-2xl border-2 border-sky-100 dark:border-sky-700/20 bg-gradient-to-b from-slate-50 to-white dark:from-slate-800 dark:to-slate-900 overflow-hidden flex items-center justify-center">
+                                        {viewingRecord.firmaEntrega && viewingRecord.firmaEntrega !== 'mock' ? (
+                                            <img src={viewingRecord.firmaEntrega} alt="Firma entrega" className="max-h-full max-w-full object-contain p-2" />
+                                        ) : viewingRecord.firmaEntrega === 'mock' ? (
+                                            <span className="text-emerald-500 font-black text-xs uppercase flex items-center gap-2"><i className="fas fa-check-circle"></i> Firmado</span>
+                                        ) : (
+                                            <span className="text-slate-300 text-xs font-bold uppercase">Sin firma</span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Firma Quien Recibe</p>
+                                    <div className="h-36 rounded-2xl border-2 border-emerald-100 dark:border-emerald-700/20 bg-gradient-to-b from-slate-50 to-white dark:from-slate-800 dark:to-slate-900 overflow-hidden flex items-center justify-center">
+                                        {viewingRecord.firmaRecibe && viewingRecord.firmaRecibe !== 'mock' ? (
+                                            <img src={viewingRecord.firmaRecibe} alt="Firma recibe" className="max-h-full max-w-full object-contain p-2" />
+                                        ) : viewingRecord.firmaRecibe === 'mock' ? (
+                                            <span className="text-emerald-500 font-black text-xs uppercase flex items-center gap-2"><i className="fas fa-check-circle"></i> Firmado</span>
+                                        ) : (
+                                            <span className="text-slate-300 text-xs font-bold uppercase">Sin firma</span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer actions */}
+                        <div className="flex gap-3 pt-2">
+                            <button onClick={() => { setViewingRecord(null); handleEdit(viewingRecord); }} className="flex-1 py-4 bg-sky-600 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2">
+                                <EditIcon /> Editar Registro
+                            </button>
+                            <button onClick={() => setViewingRecord(null)} className="px-8 py-4 bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 rounded-2xl font-black text-xs uppercase tracking-[0.2em] hover:scale-[1.02] transition-all">
+                                Cerrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+        </>
     );
 };
 

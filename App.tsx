@@ -18,7 +18,6 @@ const MetrologyReplacement = React.lazy(() => import('./components/MetrologyRepl
 const Calibration = React.lazy(() => import('./components/Calibration'));
 const AgentHub = React.lazy(() => import('./components/AgentHub'));
 const Maintenance = React.lazy(() => import('./components/Maintenance'));
-const QualityClaims = React.lazy(() => import('./components/QualityClaims'));
 const Messaging = React.lazy(() => import('./components/Messaging'));
 
 
@@ -182,7 +181,6 @@ const App: React.FC = () => {
                                             <Route path="dashboard" element={<Dashboard user={user!} />} />
                                             <Route path="quality/forms" element={<Forms />} />
                                             <Route path="quality/nc" element={<NonConformities />} />
-                                            <Route path="quality/claims" element={<QualityClaims />} />
                                             <Route path="quality/indicators" element={<Indicators />} />
                                             <Route path="metrology" element={<Metrology />} />
                                             <Route path="metrology/replacement" element={<MetrologyReplacement />} />

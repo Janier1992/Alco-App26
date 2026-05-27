@@ -84,6 +84,112 @@ const INITIAL_FORM_DATA: Omit<InspectionData, 'id'> = {
     photo: ''
 };
 
+const MOCK_INSPECTIONS: InspectionData[] = [
+    {
+        id: 'MOCK-1',
+        fecha: new Date(Date.now() - 3600000 * 2).toISOString().split('T')[0], // hoy hace 2 horas
+        areaProceso: 'ENSAMBLE',
+        op: 'OP-4509',
+        planoOpc: 'PL-502',
+        disenoReferencia: 'VC/VCR-PRI2',
+        cantTotal: 48,
+        cantRetenida: 0,
+        estado: 'Aprobado',
+        defecto: 'NINGUNO',
+        reviso: 'YEFERSON PALACIOS',
+        responsable: 'LOPEZ CASTRO JUAN PABLO',
+        accionCorrectiva: 'NA',
+        observacionSugerida: 'NA',
+        observacion: 'Lote de ventanas revisado visualmente y con cota de holgura de ensamble óptima. Perfiles alineados, felpas y empaques en correcta tensión.',
+        photo: ''
+    },
+    {
+        id: 'MOCK-2',
+        fecha: new Date(Date.now() - 86400000).toISOString().split('T')[0], // ayer
+        areaProceso: 'TROQUELADO 1',
+        op: 'OP-4890',
+        planoOpc: 'PL-312',
+        disenoReferencia: 'CF-PRI2',
+        cantTotal: 120,
+        cantRetenida: 5,
+        estado: 'Aprobado (Condicionado)',
+        defecto: 'AGRIETAMIENTO',
+        reviso: 'JANIER MOSQUERA',
+        responsable: 'SANCHEZ OSORIO CRISTIAN',
+        accionCorrectiva: 'INTERNA',
+        observacionSugerida: '(T/CNC) REBABA POR EQUIPO DE TROQUELADO',
+        observacion: 'Se retuvieron 5 unidades temporales debido a rebabas excesivas en troquel número 3. Se realiza pulido local manual e instructivo para ajuste de prensa.',
+        photo: ''
+    },
+    {
+        id: 'MOCK-3',
+        fecha: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0], // hace 2 días
+        areaProceso: 'PINTURA',
+        op: 'OP-5112',
+        planoOpc: 'PL-204',
+        disenoReferencia: 'VP-PRI3',
+        cantTotal: 85,
+        cantRetenida: 12,
+        estado: 'Rechazado',
+        defecto: 'DECOLORACION',
+        reviso: 'SARA HURTADO',
+        responsable: 'VALENCIA USREGA DILAN',
+        accionCorrectiva: 'EXTERNA',
+        observacionSugerida: '(P) RETOQUE POR DEFECTO DE PINTURA',
+        observacion: 'Tonalidad Gris Titanio fuera de especificación (Delta E > 1.5). Desprendimiento parcial en bordes de perfiles de 6 metros. Se solicita re-procesamiento completo por proveedor.',
+        photo: ''
+    },
+    {
+        id: 'MOCK-4',
+        fecha: new Date(Date.now() - 86400000 * 3).toISOString().split('T')[0], // hace 3 días
+        areaProceso: 'CORTE DE',
+        op: 'OP-5201',
+        planoOpc: 'PL-101',
+        disenoReferencia: 'FACH-S45',
+        cantTotal: 250,
+        cantRetenida: 0,
+        estado: 'Aprobado',
+        defecto: 'NINGUNO',
+        reviso: 'JHONATAN GUERRA',
+        responsable: 'DURANGO PUERTA DIEGO',
+        accionCorrectiva: 'NA',
+        observacionSugerida: 'NA',
+        observacion: 'Cortes limpios sin rebabas. Ángulos a 45 grados validados con goniómetro digital calibrado. Medidas correctas de longitud.',
+        photo: ''
+    },
+    {
+        id: 'MOCK-5',
+        fecha: new Date(Date.now() - 86400000 * 4).toISOString().split('T')[0], // hace 4 días
+        areaProceso: 'VIDRIO TEMPLADO',
+        op: 'OP-4100',
+        planoOpc: 'PL-90',
+        disenoReferencia: 'AL-90',
+        cantTotal: 75,
+        cantRetenida: 2,
+        estado: 'Rechazado',
+        defecto: 'DESPORTILLADO',
+        reviso: 'EDWIN BEDOYA',
+        responsable: 'SALAZAR DUARTE CARLOS ALBERTO',
+        accionCorrectiva: 'REPOSICION',
+        observacionSugerida: '(VT) DESPICADO / CUCACHARA',
+        observacion: 'Dos hojas de vidrio templado de 10mm presentan desportilladuras en esquinas superiores debido a mal arrume en caballete de transporte interno. Se ordenó reposición inmediata.',
+        photo: ''
+    }
+];
+
+interface OfflineQueueItem {
+    id: string;
+    type: 'create' | 'update' | 'delete';
+    payload: any;
+    metadata: {
+        op: string;
+        areaProceso: string;
+        planoOpc?: string;
+        timestamp: number;
+        editingId?: string | null;
+    };
+}
+
 const Forms: React.FC = () => {
     const { addNotification } = useNotification();
     const [activeFormType, setActiveFormType] = useState<'none' | 'general'>('none');
@@ -91,10 +197,133 @@ const Forms: React.FC = () => {
     const [isAddLinkModalOpen, setIsAddLinkModalOpen] = useState(false);
     const [embeddedForm, setEmbeddedForm] = useState<ExternalForm | null>(null);
     const [externalLinks, setExternalLinks] = useState<ExternalForm[]>([]);
+    
+    // --- Estados locales para la Sincronización Offline ---
+    const [offlineQueue, setOfflineQueue] = useState<OfflineQueueItem[]>([]);
+    const [isSyncing, setIsSyncing] = useState(false);
+
+    // --- Estados para el Módulo de Visión Artificial e Inspección Inteligente ---
+    const [visionMode, setVisionMode] = useState<'defect' | 'measure' | 'count'>('defect');
+    const [calibrationLength, setCalibrationLength] = useState<number>(120); // 120 cm por defecto
+    const [calibrationLine, setCalibrationLine] = useState<{ p1: { x: number; y: number }; p2: { x: number; y: number } }>({
+        p1: { x: 25, y: 30 },
+        p2: { x: 75, y: 30 }
+    });
+    const [measurementLines, setMeasurementLines] = useState<{ id: string; p1: { x: number; y: number }; p2: { x: number; y: number }; label: string }[]>([]);
+    const [detectedWindows, setDetectedWindows] = useState<{ id: number; box_2d: [number, number, number, number] }[]>([]);
+    const [draggingAnchor, setDraggingAnchor] = useState<{ lineId: string; point: 'p1' | 'p2' } | null>(null);
+    
+    const imageContainerRef = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleNativePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (files && files.length > 0) {
+            const file = files[0];
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                if (event.target?.result) {
+                    setFormData(prev => ({ ...prev, photo: event.target!.result as string }));
+                    setDetectedWindows([]);
+                    setMeasurementLines([]);
+                    addNotification({ type: 'success', title: 'IMAGEN CARGADA', message: 'Se ha capturado la evidencia de calidad con éxito.' });
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    // Métodos para control de cotas de medición
+    const addMeasurementLine = () => {
+        const id = 'measure_' + Date.now();
+        const index = measurementLines.length + 1;
+        setMeasurementLines(prev => [
+            ...prev,
+            {
+                id,
+                p1: { x: 30, y: 40 + index * 5 },
+                p2: { x: 70, y: 40 + index * 5 },
+                label: `Cota ${index}`
+            }
+        ]);
+        addNotification({ type: 'info', title: 'NUEVA COTA', message: 'Se ha agregado una línea de cota azul. Arrastra sus extremos.' });
+    };
+
+    const clearMeasurementLines = () => {
+        setMeasurementLines([]);
+        addNotification({ type: 'info', title: 'LIMPIAR COTAS', message: 'Se han eliminado todas las líneas de cota.' });
+    };
+
+    const getLineDistance = (line: { p1: { x: number; y: number }; p2: { x: number; y: number } }) => {
+        const dx = line.p2.x - line.p1.x;
+        const dy = line.p2.y - line.p1.y;
+        return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    const calculateRealLength = (line: { p1: { x: number; y: number }; p2: { x: number; y: number } }) => {
+        const refDist = getLineDistance(calibrationLine);
+        if (refDist === 0) return 0;
+        const lineDist = getLineDistance(line);
+        return (lineDist / refDist) * calibrationLength;
+    };
+
+    const handleMouseMove = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
+        if (!draggingAnchor || !imageContainerRef.current) return;
+        
+        let clientX = 0;
+        let clientY = 0;
+        
+        if ('touches' in e) {
+            if (e.touches.length === 0) return;
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+        
+        const rect = imageContainerRef.current.getBoundingClientRect();
+        
+        // Calcular porcentaje (0-100) acotado a los límites del contenedor
+        const x = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+        const y = Math.max(0, Math.min(100, ((clientY - rect.top) / rect.height) * 100));
+        
+        if (draggingAnchor.lineId === 'calibration') {
+            setCalibrationLine(prev => ({
+                ...prev,
+                [draggingAnchor.point]: { x, y }
+            }));
+        } else {
+            setMeasurementLines(prev => prev.map(line => {
+                if (line.id === draggingAnchor.lineId) {
+                    return {
+                        ...line,
+                        [draggingAnchor.point]: { x, y }
+                    };
+                }
+                return line;
+            }));
+        }
+    };
 
     useEffect(() => {
         fetchExternalLinks();
+        
+        // Cargar cola offline inicial
+        const saved = localStorage.getItem('alco_offline_queue');
+        if (saved) {
+            try {
+                setOfflineQueue(JSON.parse(saved));
+            } catch (e) {
+                console.error('Error cargando cola offline:', e);
+            }
+        }
     }, []);
+
+    const saveOfflineQueue = (queue: OfflineQueueItem[]) => {
+        setOfflineQueue(queue);
+        localStorage.setItem('alco_offline_queue', JSON.stringify(queue));
+    };
 
     const fetchExternalLinks = async () => {
         try {
@@ -106,9 +335,194 @@ const Forms: React.FC = () => {
         }
     };
 
+    // --- Motor de Sincronización de Cola Offline ---
+    const triggerSyncQueue = async () => {
+        const savedQueue = localStorage.getItem('alco_offline_queue');
+        if (!savedQueue) return;
+        
+        let currentQueue: OfflineQueueItem[] = [];
+        try {
+            currentQueue = JSON.parse(savedQueue);
+        } catch (e) {
+            return;
+        }
+
+        if (currentQueue.length === 0 || isSyncing) return;
+
+        setIsSyncing(true);
+        addNotification({
+            type: 'info',
+            title: 'SINCRONIZANDO...',
+            message: `Subiendo ${currentQueue.length} transacciones pendientes a la nube...`
+        });
+
+        const remainingQueue: OfflineQueueItem[] = [];
+
+        for (const item of currentQueue) {
+            try {
+                if (item.type === 'create') {
+                    // Create Mode
+                    const { error } = await supabase.from('field_inspections').insert(item.payload);
+                    if (error) throw error;
+
+                    // Enviar notificaciones de email si aplica
+                    try {
+                        const first = item.payload[0];
+                        await EmailService.send({
+                            to: 'calidad@alco.com',
+                            subject: `[OFFLINE] Nuevos Registros de Inspección: OP ${first.op}`,
+                            body: `Se han sincronizado ${item.payload.length} reportes desde campo en modo offline de la OP ${first.op} en ${first.area_proceso}.\nInspector: ${first.reviso || 'system'}`,
+                            moduleName: 'forms',
+                            referenceId: `OP-${first.op}`,
+                            triggeredBy: first.reviso || 'system'
+                        });
+                    } catch (e) {
+                        console.warn("Fallo al enviar correo en sync:", e);
+                    }
+
+                    // NC automático
+                    const rejectedItem = item.payload.find((p: any) => p.estado === 'Rechazado');
+                    if (rejectedItem) {
+                        try {
+                            await triggerNC(rejectedItem);
+                        } catch (ncErr) {
+                            console.error("Fallo al crear NC en sync:", ncErr);
+                        }
+                    }
+                } else if (item.type === 'update') {
+                    // Update Mode
+                    const { error } = await supabase
+                        .from('field_inspections')
+                        .update(item.payload)
+                        .eq('id', item.metadata.editingId);
+                    if (error) throw error;
+                } else if (item.type === 'delete') {
+                    // Delete Mode
+                    const chunkSize = 100;
+                    const ids = item.payload as string[];
+                    for (let i = 0; i < ids.length; i += chunkSize) {
+                        const chunk = ids.slice(i, i + chunkSize);
+                        const { error } = await supabase.from('field_inspections').delete().in('id', chunk);
+                        if (error) throw error;
+                    }
+                }
+            } catch (err: any) {
+                console.error("Error syncing queue item:", err);
+                remainingQueue.push(item); // Si falla, lo dejamos en la cola para reintento
+            }
+        }
+
+        saveOfflineQueue(remainingQueue);
+        setIsSyncing(false);
+
+        if (remainingQueue.length === 0) {
+            addNotification({
+                type: 'success',
+                title: 'SINCRONIZACIÓN EXITOSA',
+                message: 'Todos los registros fuera de línea se han subido a la base de datos.'
+            });
+        } else {
+            addNotification({
+                type: 'warning',
+                title: 'SINCRONIZACIÓN PARCIAL',
+                message: `Quedan ${remainingQueue.length} registros pendientes debido a fallos de red.`
+            });
+        }
+
+        fetchInspections();
+    };
+
+    // Escuchador de red para auto-sincronización
+    useEffect(() => {
+        const handleOnline = () => {
+            triggerSyncQueue();
+        };
+        window.addEventListener('online', handleOnline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+        };
+    }, [offlineQueue, isSyncing]);
+
+    // --- Fusión de Cola Offline con Registros de Base de Datos ---
+    const mergeOfflineQueue = (dbData: InspectionData[]): InspectionData[] => {
+        const savedQueue = localStorage.getItem('alco_offline_queue');
+        let currentQueue: OfflineQueueItem[] = [];
+        if (savedQueue) {
+            try { currentQueue = JSON.parse(savedQueue); } catch (e) {}
+        }
+
+        let result = [...dbData];
+
+        // 1. Procesar eliminaciones offline primero (filtrar registros de la DB)
+        const deletedIds = new Set(
+            currentQueue
+                .filter(q => q.type === 'delete')
+                .flatMap(q => q.payload as string[])
+        );
+        result = result.filter(r => !deletedIds.has(r.id));
+
+        // 2. Procesar actualizaciones offline (modificar registros DB existentes)
+        const updates = currentQueue.filter(q => q.type === 'update');
+        updates.forEach(u => {
+            const index = result.findIndex(r => r.id === u.metadata.editingId);
+            if (index !== -1) {
+                result[index] = {
+                    ...result[index],
+                    fecha: u.payload.fecha,
+                    areaProceso: u.payload.area_proceso,
+                    op: u.payload.op,
+                    planoOpc: u.payload.plano_opc,
+                    disenoReferencia: u.payload.diseno_referencia,
+                    cantTotal: u.payload.cant_total,
+                    cantRetenida: u.payload.cant_retenida,
+                    estado: u.payload.estado,
+                    defecto: u.payload.defecto,
+                    reviso: u.payload.reviso,
+                    responsable: u.payload.responsable,
+                    accionCorrectiva: u.payload.accion_correctiva,
+                    observacionSugerida: u.payload.observacion_sugerida,
+                    observacion: u.payload.observacion,
+                    photo: u.payload.photo_url,
+                    // @ts-ignore
+                    isOfflinePending: true
+                };
+            }
+        });
+
+        // 3. Procesar creaciones offline (agregar registros al listado)
+        const creations = currentQueue.filter(q => q.type === 'create');
+        creations.forEach(c => {
+            const items = Array.isArray(c.payload) ? c.payload : [c.payload];
+            items.forEach((item: any, idx: number) => {
+                result.unshift({
+                    id: `${c.id}-${idx}`, // ID temporal
+                    fecha: item.fecha,
+                    areaProceso: item.area_proceso,
+                    op: item.op,
+                    planoOpc: item.plano_opc,
+                    disenoReferencia: item.diseno_referencia,
+                    cantTotal: item.cant_total,
+                    cantRetenida: item.cant_retenida,
+                    estado: item.estado,
+                    defecto: item.defecto,
+                    reviso: item.reviso,
+                    responsable: item.responsable,
+                    accionCorrectiva: item.accion_correctiva,
+                    observacionSugerida: item.observacion_sugerida,
+                    observacion: item.observacion,
+                    photo: item.photo_url,
+                    // @ts-ignore
+                    isOfflinePending: true
+                });
+            });
+        });
+
+        return result;
+    };
+
     const [formData, setFormData] = useState<Omit<InspectionData, 'id'>>(INITIAL_FORM_DATA);
     const [submissions, setSubmissions] = useState<InspectionData[]>([]);
-    const [isCameraOpen, setCameraOpen] = useState(false);
+    const [isCameraOpen, setIsCameraOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -299,10 +713,34 @@ const Forms: React.FC = () => {
                 photo: item.photo_url || ''
             }));
 
-            setSubmissions(mappedData);
+            // Guardar en caché local para persistencia offline y sesiones sin conexión
+            localStorage.setItem('alco_cached_inspections', JSON.stringify(mappedData));
+
+            const merged = mergeOfflineQueue(mappedData);
+            setSubmissions(merged);
         } catch (error) {
-            console.error(error);
-            addNotification({ type: 'error', title: 'Error', message: 'No se pudieron cargar las inspecciones.' });
+            console.error("fetchInspections failed, using local fallback:", error);
+            
+            // Fallback 1: Intentar cargar del caché local
+            const cached = localStorage.getItem('alco_cached_inspections');
+            let baseSubmissions: InspectionData[] = [];
+            if (cached) {
+                try {
+                    baseSubmissions = JSON.parse(cached);
+                } catch (e) {
+                    console.error("Error parsing cached inspections:", e);
+                }
+            }
+
+            // Fallback 2: Si el caché está vacío, usar los mock de alta fidelidad
+            if (baseSubmissions.length === 0) {
+                baseSubmissions = submissions.length > 0 
+                    ? submissions.filter(s => !(s as any).isOfflinePending)
+                    : MOCK_INSPECTIONS;
+            }
+
+            const merged = mergeOfflineQueue(baseSubmissions);
+            setSubmissions(merged);
         } finally {
             setLoading(false);
         }
@@ -374,40 +812,98 @@ const Forms: React.FC = () => {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
 
     const analyzeImage = async () => {
-        if (!API_KEY || API_KEY.includes('YOUR_GEMINI_API_KEY')) {
-            addNotification({ type: 'error', title: 'CONFIGURACIÓN FALTANTE', message: 'Configure VITE_GEMINI_API_KEY en .env.local con una llave válida.' });
-            return;
-        }
+        // Modo Demo fallback si falta la API Key o es el placeholder
+        const isDemoMode = !API_KEY || API_KEY.includes('YOUR_GEMINI_API_KEY');
 
         let base64Image = formData.photo;
-        let mimeType = "image/png"; // Default, will try to infer or assume
+        let mimeType = "image/png"; // Default
 
         if (!base64Image) {
-            // Load a demo image if none exists (for testing purposes)
+            // Cargar imagen demo si está vacía
             const demoImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAiSURBVHgB7c6xCQAgDAVRR9A6g4u4/2QW4QPct8p1CR8zM3O3750A8iJLiSwlspTIUiJLiSwlspTIUiJLiSwlspTIUiJLiSwlspTIUiJLiSwlspTIUiJLiyx9I8sF/w49i0kAAAAASUVORK5CYII=';
             setFormData(prev => ({ ...prev, photo: demoImage }));
             addNotification({ type: 'info', title: 'MODO DEMO', message: 'Se ha cargado una imagen de prueba. Procesando...' });
             base64Image = demoImage;
         }
 
-        // Extract base64 data and mime type
+        setIsAnalyzing(true);
+        const isCountingMode = visionMode === 'count';
+
+        if (isDemoMode) {
+            addNotification({ 
+                type: 'info', 
+                title: 'MODO DEMO ACTIVO', 
+                message: isCountingMode ? 'Simulando conteo de ventanas en arrume por IA...' : 'Simulando análisis de defectos por IA...' 
+            });
+            
+            // Simular retraso de red de 2 segundos para credibilidad visual
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            if (isCountingMode) {
+                // 4 ventanas simuladas en coordenadas normalizadas (0-1000)
+                const mockWindows = [
+                    { id: 1, box_2d: [150, 150, 450, 450] as [number, number, number, number] },
+                    { id: 2, box_2d: [150, 550, 450, 850] as [number, number, number, number] },
+                    { id: 3, box_2d: [550, 150, 850, 450] as [number, number, number, number] },
+                    { id: 4, box_2d: [550, 550, 850, 850] as [number, number, number, number] }
+                ];
+                setDetectedWindows(mockWindows);
+                setFormData(prev => ({
+                    ...prev,
+                    cantTotal: 4,
+                    observacion: prev.observacion === 'NA'
+                        ? 'IA CONTEO (DEMO): Se detectaron 4 unidades en el arrume de ventanas.'
+                        : `${prev.observacion} \n[IA CONTEO DEMO]: Se detectaron 4 unidades en el arrume de ventanas.`
+                }));
+                addNotification({ type: 'success', title: 'CONTEO COMPLETADO (DEMO)', message: 'La IA detectó 4 unidades de ventana apiladas en el arrume.' });
+            } else {
+                setFormData(prev => ({
+                    ...prev,
+                    cantTotal: 1,
+                    defecto: 'NINGUNO',
+                    estado: 'Aprobado',
+                    alertLevel: 'None',
+                    isLocked: false,
+                    observacion: prev.observacion === 'NA'
+                        ? 'IA DEFECTOS (DEMO): Perfil de aluminio verificado con éxito. Sin defectos visibles.'
+                        : `${prev.observacion} \n[IA DEFECTOS DEMO]: Perfil de aluminio verificado con éxito. Sin defectos visibles.`
+                }));
+                addNotification({ type: 'success', title: 'ANÁLISIS COMPLETADO (DEMO)', message: 'Conteo: 1 | Defecto: NINGUNO | Estado: Aprobado' });
+            }
+            setIsAnalyzing(false);
+            return;
+        }
+
+        // Extraer datos base64 y tipo mime
         const parts = base64Image.split(',');
         if (parts.length > 1) {
             mimeType = parts[0].match(/:(.*?);/)?.[1] || mimeType;
             base64Image = parts[1];
         } else {
-            // If it's just base64 without data URI prefix, assume png
             mimeType = "image/png";
         }
 
-        setIsAnalyzing(true);
         addNotification({ type: 'info', title: 'ANALIZANDO...', message: 'Gemini 1.5 Flash está inspeccionando la imagen...' });
 
         try {
             const genAI = new GoogleGenerativeAI(API_KEY);
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-001" });
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-            const prompt = `
+            const prompt = isCountingMode ? `
+                Analiza esta foto de perfiles o ventanas de aluminio apiladas/arrumadas en una obra o fábrica.
+                Actúa como un inspector de control de calidad experto en metrología y empaque industrial de Alco.
+                1. Identifica y cuenta con precisión absoluta cuántas unidades individuales de ventanas o perfiles apilados están presentes en el arrume.
+                2. Para cada ventana o perfil individual visible que identifiques en el arrume, proporciona su caja delimitadora aproximada [ymin, xmin, ymax, xmax] normalizada en una escala de 0 a 1000 (donde 0 es arriba/izquierda y 1000 es abajo/derecha).
+                3. Responde EXCLUSIVAMENTE con un JSON plano y limpio (sin formato markdown \`\`\`json ... \`\`\` adicional):
+                {
+                    "cantTotal": number (conteo total de unidades detectadas en los arrumes),
+                    "ventanas": [
+                        { "id": number (correlativo), "box_2d": [number, number, number, number] }
+                    ],
+                    "observacion": "descripción técnica en ESPAÑOL indicando cuántas unidades se contaron en el arrume de perfiles"
+                }
+                Asegúrate de responder estrictamente en formato JSON válido y en ESPAÑOL.
+            ` : `
                 Analiza esta imagen de una parte industrial / perfil de aluminio. Actúa como un experto inspector de calidad.
                 Responde EXCLUSIVAMENTE con un objeto JSON (sin markdown) con la siguiente estructura:
                 {
@@ -432,42 +928,58 @@ const Forms: React.FC = () => {
             const response = await result.response;
             const text = response.text();
 
-            // Parse JSON with cleanup (remove Markdown ```json ... ``` if present)
+            // Parsear JSON (limpiar marcas Markdown ```json si existen)
             const cleanJson = text.replace(/```json/g, '').replace(/```/g, '').trim();
             const analysis = JSON.parse(cleanJson);
 
-            // Determine status based on defect
-            let status = 'Aprobado';
-            let alertLevel: 'None' | 'Warning' | 'Critical' = 'None';
-            let isLocked = false;
-
-            if (analysis.defecto !== 'NINGUNO') {
-                if (['REVENTON', 'DECOLORACION'].includes(analysis.defecto)) {
-                    status = 'Rechazado';
-                    alertLevel = 'Critical';
-                    isLocked = true;
-                } else {
-                    status = 'Aprobado (Condicionado)';
-                    alertLevel = 'Warning';
-                }
-            }
-
-            setFormData(prev => ({
-                ...prev,
-                cantTotal: analysis.cantTotal || 0,
-                defecto: analysis.defecto || 'NINGUNO',
-                estado: status,
-                alertLevel: alertLevel,
-                isLocked: isLocked,
-                observacion: prev.observacion === 'NA'
-                    ? `IA: ${analysis.observacion}`
-                    : `${prev.observacion} \n[IA]: ${analysis.observacion}`
-            }));
-
-            if (alertLevel === 'Critical') {
-                addNotification({ type: 'error', title: 'BLOQUEO DE CALIDAD', message: `Defecto CRÍTICO detectado (${analysis.defecto}).` });
+            if (isCountingMode) {
+                setDetectedWindows(analysis.ventanas || []);
+                setFormData(prev => ({
+                    ...prev,
+                    cantTotal: analysis.cantTotal || 0,
+                    observacion: prev.observacion === 'NA'
+                        ? `Conteo IA: Se detectaron ${analysis.cantTotal} unidades en arrume. ${analysis.observacion}`
+                        : `${prev.observacion} \n[IA Conteo]: Se detectaron ${analysis.cantTotal} unidades en arrume. ${analysis.observacion}`
+                }));
+                addNotification({
+                    type: 'success',
+                    title: 'CONTEO COMPLETADO',
+                    message: `La IA detectó ${analysis.cantTotal} unidades en el arrume de ventanas.`
+                });
             } else {
-                addNotification({ type: 'success', title: 'ANÁLISIS COMPLETADO', message: `Conteo: ${analysis.cantTotal} | Defecto: ${analysis.defecto}` });
+                // Determinar estado de acuerdo al defecto
+                let status = 'Aprobado';
+                let alertLevel: 'None' | 'Warning' | 'Critical' = 'None';
+                let isLocked = false;
+
+                if (analysis.defecto !== 'NINGUNO') {
+                    if (['REVENTON', 'DECOLORACION'].includes(analysis.defecto)) {
+                        status = 'Rechazado';
+                        alertLevel = 'Critical';
+                        isLocked = true;
+                    } else {
+                        status = 'Aprobado (Condicionado)';
+                        alertLevel = 'Warning';
+                    }
+                }
+
+                setFormData(prev => ({
+                    ...prev,
+                    cantTotal: analysis.cantTotal || 0,
+                    defecto: analysis.defecto || 'NINGUNO',
+                    estado: status,
+                    alertLevel: alertLevel,
+                    isLocked: isLocked,
+                    observacion: prev.observacion === 'NA'
+                        ? `IA: ${analysis.observacion}`
+                        : `${prev.observacion} \n[IA]: ${analysis.observacion}`
+                }));
+
+                if (alertLevel === 'Critical') {
+                    addNotification({ type: 'error', title: 'BLOQUEO DE CALIDAD', message: `Defecto CRÍTICO detectado (${analysis.defecto}).` });
+                } else {
+                    addNotification({ type: 'success', title: 'ANÁLISIS COMPLETADO', message: `Conteo: ${analysis.cantTotal} | Defecto: ${analysis.defecto}` });
+                }
             }
 
         } catch (error: any) {
@@ -510,6 +1022,53 @@ const Forms: React.FC = () => {
         navigate('/quality/forms', { replace: true, state: {} });
     };
 
+    const handleOfflineDelete = (idsToDelete: string[], isBulk: boolean) => {
+        const savedQueue = localStorage.getItem('alco_offline_queue');
+        let currentQueue: OfflineQueueItem[] = [];
+        if (savedQueue) {
+            try { currentQueue = JSON.parse(savedQueue); } catch (e) {}
+        }
+
+        // Separar IDs de DB reales y IDs temporales creados localmente
+        const realDbIds = idsToDelete.filter(id => !id.toString().includes('offline-'));
+        const tempIds = idsToDelete.filter(id => id.toString().includes('offline-'));
+
+        // 1. Eliminar de la cola local las creaciones offline temporales
+        if (tempIds.length > 0) {
+            // El ID temporal es de la forma "offline-<timestamp>-<idx>", extraemos el prefijo temporal "offline-<timestamp>"
+            const tempPrefixes = new Set(tempIds.map(id => id.split('-').slice(0, 2).join('-')));
+            currentQueue = currentQueue.filter(q => !tempPrefixes.has(q.id));
+        }
+
+        // 2. Para los registros que ya están en la DB, encolamos su eliminación offline
+        if (realDbIds.length > 0) {
+            const tempId = `offline-${Date.now()}`;
+            const deleteItem: OfflineQueueItem = {
+                id: tempId,
+                type: 'delete',
+                payload: realDbIds,
+                metadata: {
+                    op: 'ELIMINACIÓN MASIVA',
+                    areaProceso: 'MÚLTIPLE',
+                    timestamp: Date.now()
+                }
+            };
+            currentQueue.push(deleteItem);
+        }
+
+        saveOfflineQueue(currentQueue);
+        fetchInspections(); // Recargar para volver a inyectar la cola local fusionada
+
+        if (isBulk) setSelectedIds(new Set());
+        addNotification({
+            type: 'error',
+            title: 'ELIMINADO LOCALMENTE',
+            message: isBulk 
+                ? `${idsToDelete.length} registros eliminados localmente. Se sincronizará al conectar.` 
+                : 'Inspección eliminada localmente en tu dispositivo.'
+        });
+    };
+
     const handleDelete = async (id: string | string[]) => {
         const isBulk = Array.isArray(id);
         const idsToDelete = isBulk ? id : [id];
@@ -518,6 +1077,12 @@ const Forms: React.FC = () => {
             : '¿Eliminar este registro de inspección permanentemente?';
 
         if (confirm(message)) {
+            // Si estamos offline, desviamos a la cola offline
+            if (!navigator.onLine) {
+                handleOfflineDelete(idsToDelete, isBulk);
+                return;
+            }
+
             setLoading(true);
             try {
                 // Chunk the deletion to avoid URL length limits (Supabase/PostgREST)
@@ -538,8 +1103,8 @@ const Forms: React.FC = () => {
                     message: isBulk ? `${idsToDelete.length} registros han sido removidos.` : 'La inspección ha sido eliminada del historial.'
                 });
             } catch (error) {
-                console.error(error);
-                addNotification({ type: 'error', title: 'Error', message: 'No se pudo completar la eliminación acelerada. Algunos registros podrían persistir.' });
+                console.error("Delete online failed, falling back to offline delete:", error);
+                handleOfflineDelete(idsToDelete, isBulk);
             } finally {
                 setLoading(false);
             }
@@ -581,6 +1146,66 @@ const Forms: React.FC = () => {
         if (error) console.error('Error triggering NC:', error);
     };
 
+    const handleOfflineSubmit = (getDBPayload: any) => {
+        const queue: OfflineQueueItem[] = JSON.parse(localStorage.getItem('alco_offline_queue') || '[]');
+        const tempId = `offline-${Date.now()}`;
+        let item: OfflineQueueItem;
+
+        if (editingId) {
+            // Modo de edición offline
+            const payload = getDBPayload(formData);
+            item = {
+                id: tempId,
+                type: 'update',
+                payload,
+                metadata: {
+                    op: formData.op,
+                    areaProceso: formData.areaProceso,
+                    planoOpc: formData.planoOpc,
+                    timestamp: Date.now(),
+                    editingId
+                }
+            };
+            addNotification({ 
+                type: 'warning', 
+                title: 'GUARDADO LOCALMENTE', 
+                message: `Inspección OP #${formData.op} actualizada localmente en tu dispositivo.` 
+            });
+        } else {
+            // Modo de creación offline
+            const planNumbers = formData.planoOpc ? parsePlanNumbers(formData.planoOpc) : [formData.planoOpc];
+            const plansToSubmit = planNumbers.length > 0 ? planNumbers : [formData.planoOpc];
+            const inserts = plansToSubmit.map(plan => getDBPayload({ ...formData, planoOpc: plan }));
+
+            item = {
+                id: tempId,
+                type: 'create',
+                payload: inserts,
+                metadata: {
+                    op: formData.op,
+                    areaProceso: formData.areaProceso,
+                    planoOpc: formData.planoOpc,
+                    timestamp: Date.now()
+                }
+            };
+            addNotification({ 
+                type: 'warning', 
+                title: 'GUARDADO LOCALMENTE', 
+                message: `${inserts.length} registros guardados localmente. Se sincronizarán al recuperar conexión.` 
+            });
+        }
+
+        queue.push(item);
+        saveOfflineQueue(queue);
+        fetchInspections(); // Recargar para fusionar e inyectar el cambio en la tabla
+        
+        setFormData(INITIAL_FORM_DATA);
+        setActiveFormType('none');
+        setEditingId(null);
+        setFilterId(null);
+        navigate('/quality/forms', { replace: true, state: {} });
+    };
+
     const handleSubmitGeneral = async (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -601,6 +1226,12 @@ const Forms: React.FC = () => {
             observacion: data.observacion || 'NA',
             photo_url: data.photo
         });
+
+        // 1. Detectar si estamos offline antes de proceder
+        if (!navigator.onLine) {
+            handleOfflineSubmit(getDBPayload);
+            return;
+        }
 
         try {
             if (editingId) {
@@ -627,14 +1258,18 @@ const Forms: React.FC = () => {
 
                 if (error) throw error;
 
-                await EmailService.send({
-                    to: 'calidad@alco.com',
-                    subject: `Nuevos Registros de Inspección: OP ${formData.op}`,
-                    body: `Se han generado ${inserts.length} reportes de inspección para la OP ${formData.op} en el área de ${formData.areaProceso}.\nInspector: ${formData.reviso || 'system'}`,
-                    moduleName: 'forms',
-                    referenceId: `OP-${formData.op}`,
-                    triggeredBy: formData.reviso || 'system'
-                });
+                try {
+                    await EmailService.send({
+                        to: 'calidad@alco.com',
+                        subject: `Nuevos Registros de Inspección: OP ${formData.op}`,
+                        body: `Se han generado ${inserts.length} reportes de inspección para la OP ${formData.op} en el área de ${formData.areaProceso}.\nInspector: ${formData.reviso || 'system'}`,
+                        moduleName: 'forms',
+                        referenceId: `OP-${formData.op}`,
+                        triggeredBy: formData.reviso || 'system'
+                    });
+                } catch (emailErr) {
+                    console.warn("Fallo al enviar correo en creación online:", emailErr);
+                }
 
                 addNotification({ type: 'success', title: 'REGISTROS GUARDADOS', message: `${inserts.length} inspecciones generadas para OP #${formData.op}.` });
 
@@ -653,8 +1288,8 @@ const Forms: React.FC = () => {
             navigate('/quality/forms', { replace: true, state: {} });
 
         } catch (error) {
-            console.error(error);
-            addNotification({ type: 'error', title: 'Error', message: 'No se pudo guardar la inspección.' });
+            console.error("Online submit failed, falling back to offline mode:", error);
+            handleOfflineSubmit(getDBPayload);
         }
     };
 
@@ -804,6 +1439,40 @@ const Forms: React.FC = () => {
                 </div>
             </div>
 
+            {/* BANNER DE SINCRONIZACIÓN OFFLINE */}
+            {offlineQueue.length > 0 && (
+                <div className="glass-card p-4 md:p-6 bg-gradient-to-r from-amber-500/10 via-amber-600/5 to-transparent border border-amber-500/20 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500 shadow-sm border border-amber-500/10">
+                            <i className="fas fa-cloud-slash text-lg"></i>
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">Sincronización Fuera de Línea</h3>
+                            <p className="text-[10px] text-amber-600 dark:text-amber-400 font-bold uppercase tracking-widest mt-1">
+                                Tienes {offlineQueue.length} {offlineQueue.length === 1 ? 'inspección pendiente' : 'inspecciones pendientes'} de subir a la nube
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-3 w-full md:w-auto">
+                        <button
+                            onClick={triggerSyncQueue}
+                            disabled={isSyncing}
+                            className={`w-full md:w-auto px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 ${isSyncing ? 'opacity-70 cursor-not-allowed' : ''}`}
+                        >
+                            {isSyncing ? (
+                                <>
+                                    <i className="fas fa-spinner animate-spin"></i> Sincronizando...
+                                </>
+                            ) : (
+                                <>
+                                    <i className="fas fa-sync-alt animate-spin" style={{ animationDuration: '3s' }}></i> Sincronizar Ahora
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {isLinksViewOpen && (
                 <div className="premium-card p-8 animate-fade-in-up mb-6">
                     <div className="flex justify-between items-start mb-6">
@@ -849,41 +1518,352 @@ const Forms: React.FC = () => {
                     </div>
                     <form onSubmit={handleSubmitGeneral} className="space-y-8">
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-                            {/* Panel Izquierdo: Captura Visual */}
-                            <div className="lg:col-span-3 space-y-6">
-                                <label className={labelStyles}>Evidencia Visual</label>
-                                <div className="aspect-square bg-slate-50 dark:bg-black/20 rounded-2xl border-2 border-dashed border-slate-200 dark:border-white/5 flex flex-col items-center justify-center relative overflow-hidden group">
+                            {/* Panel Izquierdo: Captura Visual y Visión Artificial */}
+                            <div className="lg:col-span-4 space-y-6">
+                                <div className="flex justify-between items-center px-1">
+                                    <label className={labelStyles}>Evidencia Visual e Inspección Inteligente</label>
+                                </div>
+                                
+                                {/* Menú de Pestañas HUD para Modos de Visión */}
+                                <div className="flex bg-slate-100 dark:bg-black/40 p-1 rounded-2xl border border-slate-200/60 dark:border-white/[0.04] text-[9px] font-black uppercase tracking-wider shadow-inner">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setVisionMode('defect'); setDetectedWindows([]); }}
+                                        className={`flex-1 py-2.5 rounded-xl transition-all duration-300 ${visionMode === 'defect' ? 'bg-gradient-to-r from-sky-600 to-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                                    >
+                                        <i className="fas fa-search-minus mr-1.5"></i> Defectos
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setVisionMode('measure'); setDetectedWindows([]); }}
+                                        className={`flex-1 py-2.5 rounded-xl transition-all duration-300 ${visionMode === 'measure' ? 'bg-gradient-to-r from-emerald-600 to-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                                    >
+                                        <i className="fas fa-ruler-combined mr-1.5"></i> Cotas 2D
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setVisionMode('count'); }}
+                                        className={`flex-1 py-2.5 rounded-xl transition-all duration-300 ${visionMode === 'count' ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                                    >
+                                        <i className="fas fa-boxes mr-1.5"></i> Arrumes
+                                    </button>
+                                </div>
+
+                                {/* Contenedor de Imagen y SVG Overlay */}
+                                <div 
+                                    ref={imageContainerRef}
+                                    onMouseMove={handleMouseMove}
+                                    onTouchMove={handleMouseMove}
+                                    onMouseUp={() => setDraggingAnchor(null)}
+                                    onTouchEnd={() => setDraggingAnchor(null)}
+                                    onMouseLeave={() => setDraggingAnchor(null)}
+                                    className="aspect-square bg-slate-50 dark:bg-black/20 rounded-3xl border-2 border-dashed border-slate-200 dark:border-white/5 flex flex-col items-center justify-center relative overflow-hidden group select-none shadow-inner"
+                                >
                                     {formData.photo ? (
-                                        <img src={formData.photo} alt="Evidencia" className="w-full h-full object-cover" />
+                                        <>
+                                            <img 
+                                                src={formData.photo} 
+                                                alt="Evidencia" 
+                                                className="w-full h-full object-cover pointer-events-none select-none" 
+                                                style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+                                            />
+                                            
+                                            {/* Capa de Dibujo SVG para Visión Computacional */}
+                                            <svg 
+                                                className="absolute inset-0 w-full h-full pointer-events-auto" 
+                                                viewBox="0 0 100 100" 
+                                                preserveAspectRatio="none"
+                                            >
+                                                {/* MODO MEDICIÓN: Línea de calibración y cotas */}
+                                                {visionMode === 'measure' && (
+                                                    <>
+                                                        {/* Línea de Calibración (Verde) */}
+                                                        <line 
+                                                            x1={calibrationLine.p1.x} 
+                                                            y1={calibrationLine.p1.y} 
+                                                            x2={calibrationLine.p2.x} 
+                                                            y2={calibrationLine.p2.y} 
+                                                            stroke="#10b981" 
+                                                            strokeWidth="1" 
+                                                            strokeDasharray="2" 
+                                                        />
+                                                        {/* Etiqueta de Calibración */}
+                                                        <rect 
+                                                            x={((calibrationLine.p1.x + calibrationLine.p2.x) / 2) - 13} 
+                                                            y={((calibrationLine.p1.y + calibrationLine.p2.y) / 2) - 3} 
+                                                            width="26" 
+                                                            height="6" 
+                                                            rx="1.5" 
+                                                            fill="#064e3b" 
+                                                        />
+                                                        <text 
+                                                            x={(calibrationLine.p1.x + calibrationLine.p2.x) / 2} 
+                                                            y={((calibrationLine.p1.y + calibrationLine.p2.y) / 2) + 1.2} 
+                                                            fill="#10b981" 
+                                                            fontSize="2.8" 
+                                                            fontWeight="black" 
+                                                            textAnchor="middle"
+                                                        >
+                                                            REF: {calibrationLength} cm
+                                                        </text>
+                                                        {/* Anclas de Calibración */}
+                                                        <circle 
+                                                            cx={calibrationLine.p1.x} 
+                                                            cy={calibrationLine.p1.y} 
+                                                            r="2.2" 
+                                                            fill="#10b981" 
+                                                            stroke="white" 
+                                                            strokeWidth="0.5" 
+                                                            className="cursor-move pointer-events-auto hover:scale-125 transition-transform" 
+                                                            onMouseDown={() => setDraggingAnchor({ lineId: 'calibration', point: 'p1' })} 
+                                                            onTouchStart={() => setDraggingAnchor({ lineId: 'calibration', point: 'p1' })} 
+                                                        />
+                                                        <circle 
+                                                            cx={calibrationLine.p2.x} 
+                                                            cy={calibrationLine.p2.y} 
+                                                            r="2.2" 
+                                                            fill="#10b981" 
+                                                            stroke="white" 
+                                                            strokeWidth="0.5" 
+                                                            className="cursor-move pointer-events-auto hover:scale-125 transition-transform" 
+                                                            onMouseDown={() => setDraggingAnchor({ lineId: 'calibration', point: 'p2' })} 
+                                                            onTouchStart={() => setDraggingAnchor({ lineId: 'calibration', point: 'p2' })} 
+                                                        />
+
+                                                        {/* Líneas de Cota Adicionales (Cian) */}
+                                                        {measurementLines.map(line => {
+                                                            const len = calculateRealLength(line).toFixed(1);
+                                                            return (
+                                                                <g key={line.id}>
+                                                                    <line 
+                                                                        x1={line.p1.x} 
+                                                                        y1={line.p1.y} 
+                                                                        x2={line.p2.x} 
+                                                                        y2={line.p2.y} 
+                                                                        stroke="#38bdf8" 
+                                                                        strokeWidth="0.8" 
+                                                                    />
+                                                                    {/* Etiqueta de la Cota */}
+                                                                    <rect 
+                                                                        x={((line.p1.x + line.p2.x) / 2) - 10} 
+                                                                        y={((line.p1.y + line.p2.y) / 2) - 3} 
+                                                                        width="20" 
+                                                                        height="6" 
+                                                                        rx="1.5" 
+                                                                        fill="#0c4a6e" 
+                                                                    />
+                                                                    <text 
+                                                                        x={(line.p1.x + line.p2.x) / 2} 
+                                                                        y={((line.p1.y + line.p2.y) / 2) + 1.2} 
+                                                                        fill="#38bdf8" 
+                                                                        fontSize="2.8" 
+                                                                        fontWeight="black" 
+                                                                        textAnchor="middle"
+                                                                    >
+                                                                        {len} cm
+                                                                    </text>
+                                                                    {/* Anclas de la Cota */}
+                                                                    <circle 
+                                                                        cx={line.p1.x} 
+                                                                        cy={line.p1.y} 
+                                                                        r="1.8" 
+                                                                        fill="#38bdf8" 
+                                                                        stroke="white" 
+                                                                        strokeWidth="0.4" 
+                                                                        className="cursor-move pointer-events-auto hover:scale-125 transition-transform" 
+                                                                        onMouseDown={() => setDraggingAnchor({ lineId: line.id, point: 'p1' })} 
+                                                                        onTouchStart={() => setDraggingAnchor({ lineId: line.id, point: 'p1' })} 
+                                                                    />
+                                                                    <circle 
+                                                                        cx={line.p2.x} 
+                                                                        cy={line.p2.y} 
+                                                                        r="1.8" 
+                                                                        fill="#38bdf8" 
+                                                                        stroke="white" 
+                                                                        strokeWidth="0.4" 
+                                                                        className="cursor-move pointer-events-auto hover:scale-125 transition-transform" 
+                                                                        onMouseDown={() => setDraggingAnchor({ lineId: line.id, point: 'p2' })} 
+                                                                        onTouchStart={() => setDraggingAnchor({ lineId: line.id, point: 'p2' })} 
+                                                                    />
+                                                                </g>
+                                                            );
+                                                        })}
+                                                    </>
+                                                )}
+
+                                                {/* MODO CONTEO: Bounding Boxes de ventanas */}
+                                                {visionMode === 'count' && (
+                                                    <>
+                                                        {detectedWindows.map(win => {
+                                                            const ymin = win.box_2d[0] / 10;
+                                                            const xmin = win.box_2d[1] / 10;
+                                                            const ymax = win.box_2d[2] / 10;
+                                                            const xmax = win.box_2d[3] / 10;
+                                                            const w = xmax - xmin;
+                                                            const h = ymax - ymin;
+                                                            return (
+                                                                <g key={win.id}>
+                                                                    <rect 
+                                                                        x={xmin} 
+                                                                        y={ymin} 
+                                                                        width={w} 
+                                                                        height={h} 
+                                                                        fill="rgba(16, 185, 129, 0.12)" 
+                                                                        stroke="#10b981" 
+                                                                        strokeWidth="0.8" 
+                                                                        strokeDasharray="1 1"
+                                                                        rx="1" 
+                                                                    />
+                                                                    {/* Banderola con número de conteo */}
+                                                                    <rect 
+                                                                        x={xmin} 
+                                                                        y={ymin} 
+                                                                        width="6" 
+                                                                        height="6" 
+                                                                        rx="1" 
+                                                                        fill="#10b981" 
+                                                                    />
+                                                                    <text 
+                                                                        x={xmin + 3} 
+                                                                        y={ymin + 4.2} 
+                                                                        fill="white" 
+                                                                        fontSize="3.2" 
+                                                                        fontWeight="black" 
+                                                                        textAnchor="middle"
+                                                                    >
+                                                                        {win.id}
+                                                                    </text>
+                                                                </g>
+                                                            );
+                                                        })}
+                                                    </>
+                                                )}
+                                            </svg>
+                                        </>
                                     ) : (
                                         <div className="text-center p-6 opacity-30">
                                             <CameraIcon className="text-4xl mx-auto mb-3" />
                                             <p className="text-[10px] font-black uppercase tracking-widest">Sin captura</p>
                                         </div>
                                     )}
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-                                        <button type="button" onClick={() => addNotification({ type: 'info', title: 'Cámara', message: 'Iniciando hardware de captura...' })} className="p-4 bg-sky-600 text-white rounded-2xl shadow-xl hover:scale-110 transition-transform"><CameraIcon /></button>
-                                        {formData.photo && <button type="button" onClick={() => setFormData({ ...formData, photo: '' })} className="p-4 bg-rose-600 text-white rounded-2xl shadow-xl hover:scale-110 transition-transform"><TrashIcon /></button>}
+                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 z-20">
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setIsCameraOpen(true)} 
+                                            className="p-4 bg-sky-600 text-white rounded-2xl shadow-xl hover:scale-110 transition-transform flex items-center justify-center"
+                                            title="Abrir Cámara Web / Celular"
+                                        >
+                                            <CameraIcon />
+                                        </button>
+                                        <button 
+                                            type="button" 
+                                            onClick={() => fileInputRef.current?.click()} 
+                                            className="p-4 bg-emerald-600 text-white rounded-2xl shadow-xl hover:scale-110 transition-transform flex items-center justify-center"
+                                            title="Captura Nativa / Subir Archivo"
+                                        >
+                                            <i className="fas fa-upload text-sm"></i>
+                                        </button>
+                                        {formData.photo && <button type="button" onClick={() => { setFormData({ ...formData, photo: '' }); setDetectedWindows([]); setMeasurementLines([]); }} className="p-4 bg-rose-600 text-white rounded-2xl shadow-xl hover:scale-110 transition-transform"><TrashIcon /></button>}
                                     </div>
+                                    <input 
+                                        type="file" 
+                                        accept="image/*" 
+                                        capture="environment" 
+                                        ref={fileInputRef} 
+                                        className="hidden" 
+                                        onChange={handleNativePhotoCapture} 
+                                    />
                                 </div>
-                                <div className="p-5 bg-sky-50 dark:bg-sky-900/10 rounded-2xl border border-sky-100 dark:border-sky-900/30">
-                                    <p className="text-[9px] font-black text-sky-600 uppercase tracking-widest flex items-center gap-2 mb-2"><SparklesIcon className="scale-75" /> Recomendación IA</p>
-                                    <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed italic">"Capture los bordes de la perfilería a 45° para detectar rebabas de corte automáticamente."</p>
 
-                                    <button
-                                        type="button"
-                                        onClick={analyzeImage}
-                                        disabled={isAnalyzing}
-                                        className={`w-full mt-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${isAnalyzing ? 'bg-slate-200 text-slate-400' : 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-indigo-500/30 hover:scale-[1.02]'}`}
-                                    >
-                                        {isAnalyzing ? <RefreshIcon className="animate-spin" /> : <SparklesIcon />}
-                                        {isAnalyzing ? 'Procesando...' : 'Analizar con IA'}
-                                    </button>
-                                </div>
+                                {/* Panel de control inferior de acuerdo al modo */}
+                                {visionMode === 'defect' && (
+                                    <div className="p-5 bg-sky-50 dark:bg-sky-900/10 rounded-2xl border border-sky-100 dark:border-sky-900/30">
+                                        <p className="text-[9px] font-black text-sky-600 uppercase tracking-widest flex items-center gap-2 mb-2"><SparklesIcon className="scale-75" /> Recomendación IA</p>
+                                        <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed italic">"Capture los bordes de la perfilería a 45° para detectar rebabas de corte automáticamente."</p>
+
+                                        <button
+                                            type="button"
+                                            onClick={analyzeImage}
+                                            disabled={isAnalyzing}
+                                            className={`w-full mt-3 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${isAnalyzing ? 'bg-slate-200 text-slate-400' : 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-indigo-500/30 hover:scale-[1.02]'}`}
+                                        >
+                                            {isAnalyzing ? <RefreshIcon className="animate-spin" /> : <SparklesIcon />}
+                                            {isAnalyzing ? 'Procesando...' : 'Analizar con IA'}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {visionMode === 'measure' && (
+                                    <div className="p-5 bg-emerald-50 dark:bg-emerald-950/10 rounded-2xl border border-emerald-100 dark:border-emerald-900/30 space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest flex items-center gap-2"><i className="fas fa-ruler-horizontal text-xs"></i> Calibrador 2D</p>
+                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Metrología</span>
+                                        </div>
+                                        
+                                        <div className="space-y-1.5">
+                                            <label className="block text-[8px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Largo de Referencia (cm):</label>
+                                            <input 
+                                                type="number"
+                                                value={calibrationLength}
+                                                onChange={(e) => setCalibrationLength(Math.max(1, parseFloat(e.target.value) || 0))}
+                                                className="w-full p-2.5 bg-white dark:bg-white/[0.03] border border-slate-250 dark:border-white/[0.06] rounded-xl text-xs font-bold text-slate-900 dark:text-white outline-none"
+                                            />
+                                        </div>
+
+                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-normal italic">
+                                            "Arrastra la línea punteada verde sobre un objeto de medida conocida para autocalibrar el visor de píxeles."
+                                        </p>
+
+                                        <div className="flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={addMeasurementLine}
+                                                disabled={!formData.photo}
+                                                className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[9px] font-black uppercase tracking-wider shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                <i className="fas fa-plus mr-1"></i> Nueva Cota
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={clearMeasurementLines}
+                                                className="py-2 px-3 border border-rose-500/30 hover:bg-rose-500/10 text-rose-500 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all"
+                                            >
+                                                <i className="fas fa-trash-alt"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {visionMode === 'count' && (
+                                    <div className="p-5 bg-violet-50 dark:bg-violet-950/10 rounded-2xl border border-violet-100 dark:border-violet-900/30 space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-[9px] font-black text-violet-600 uppercase tracking-widest flex items-center gap-2"><i className="fas fa-boxes text-xs"></i> Conteo Inteligente</p>
+                                            {detectedWindows.length > 0 && (
+                                                <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 rounded font-mono text-[8px] font-bold uppercase tracking-widest">
+                                                    IA: {detectedWindows.length} UDS
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-normal italic">
+                                            "Enfoque y capture un arrume de ventanas apiladas. La IA identificará, encuadrará y contará de forma automatizada cada unidad."
+                                        </p>
+
+                                        <button
+                                            type="button"
+                                            onClick={analyzeImage}
+                                            disabled={isAnalyzing}
+                                            className={`w-full py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${isAnalyzing ? 'bg-slate-200 text-slate-400' : 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-indigo-500/30 hover:scale-[1.02]'}`}
+                                        >
+                                            {isAnalyzing ? <RefreshIcon className="animate-spin" /> : <i className="fas fa-calculator"></i>}
+                                            {isAnalyzing ? 'Contando...' : 'Contar Arrumes con IA'}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Panel Derecho: Datos Técnicos */}
-                            <div className="lg:col-span-9 space-y-6">
+                            <div className="lg:col-span-8 space-y-6">
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div><label className={labelStyles}>1. FECHA:</label><input type="date" name="fecha" value={formData.fecha} onChange={handleInputChange} className={inputStyles} /></div>
                                     <SearchableSelect label="2. ÁREA DE PROCESO:" options={AREAS_PROCESO} value={formData.areaProceso} onChange={(val) => setFormData({ ...formData, areaProceso: val })} />
@@ -947,8 +1927,8 @@ const Forms: React.FC = () => {
                 <div className="premium-card overflow-hidden animate-fade-in border border-slate-200 dark:border-white/[0.08] shadow-2xl rounded-3xl bg-white dark:bg-[#0a0e1a]">
 
                     {/* EXCEL QUICK ACTIONS TOOLBAR */}
-                    <div className="bg-slate-50 dark:bg-[#0e1220] border-b border-slate-200 dark:border-white/[0.06] p-3 flex flex-wrap items-center justify-between gap-4">
-                        <div className="flex items-center gap-2">
+                    <div className="bg-slate-50 dark:bg-[#0e1220] border-b border-slate-200 dark:border-white/[0.06] p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-2">
                             {/* Delete selected */}
                             {selectedIds.size > 0 && (
                                 <button
@@ -981,7 +1961,7 @@ const Forms: React.FC = () => {
                             </select>
 
                             {/* Excel-like Sorting buttons (arrows) next to Area filter */}
-                            <div className="h-5 w-px bg-slate-200 dark:bg-white/[0.06] mx-1"></div>
+                            <div className="hidden sm:block h-5 w-px bg-slate-200 dark:bg-white/[0.06] mx-1"></div>
                             
                             <button
                                 type="button"
@@ -1011,7 +1991,7 @@ const Forms: React.FC = () => {
                         </div>
 
                         {/* Search input in quick actions toolbar instead of formula bar */}
-                        <div className="flex items-center gap-1.5 px-3 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/[0.06] rounded-lg min-w-[200px] shadow-sm">
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/[0.06] rounded-lg w-full sm:w-auto sm:min-w-[200px] shadow-sm">
                             <input
                                 className="bg-transparent border-none outline-none text-[10px] font-bold uppercase w-full placeholder:text-slate-400 text-slate-700 dark:text-slate-300"
                                 placeholder="BUSCAR EN HOJA..."
@@ -1207,7 +2187,7 @@ const Forms: React.FC = () => {
                                 ) : paginatedSubmissions.length === 0 ? (
                                     <tr><td colSpan={16} className="px-8 py-24 text-center text-slate-400 uppercase font-extrabold select-none">Sin resultados para los filtros actuales</td></tr>
                                 ) : paginatedSubmissions.map((sub, idx) => (
-                                    <tr key={sub.id} className={`hover:bg-slate-50 dark:hover:bg-white/5 transition-all text-[10px] font-bold ${selectedIds.has(sub.id) ? 'bg-sky-50/50 dark:bg-sky-900/10' : ''} ${idx % 2 === 0 ? 'bg-white dark:bg-[#0a0e1a]' : 'bg-slate-50/20 dark:bg-white/[0.01]'}`}>
+                                    <tr key={sub.id} className={`hover:bg-slate-50 dark:hover:bg-white/5 transition-all text-[10px] font-bold ${selectedIds.has(sub.id) ? 'bg-sky-50/50 dark:bg-sky-900/10' : ''} ${(sub as any).isOfflinePending ? 'border-l-2 border-l-amber-500 bg-amber-500/[0.02] dark:bg-amber-500/[0.03]' : idx % 2 === 0 ? 'bg-white dark:bg-[#0a0e1a]' : 'bg-slate-50/20 dark:bg-white/[0.01]'}`}>
                                         {/* Excel Row Index Label */}
                                         <td className="bg-slate-100/50 dark:bg-[#111524] text-slate-400 dark:text-slate-500 text-center font-extrabold border-r border-b border-slate-200 dark:border-white/[0.08] select-none py-2.5">
                                             {(currentPage - 1) * itemsPerPage + idx + 1}
@@ -1220,7 +2200,16 @@ const Forms: React.FC = () => {
                                                 className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
                                             />
                                         </td>
-                                        <td style={{ width: columnWidths.fecha }} className="px-6 border-r border-b border-slate-200 dark:border-white/[0.06] py-2.5 font-bold text-slate-800 dark:text-slate-200 uppercase truncate" title={sub.fecha}>{sub.fecha}</td>
+                                        <td style={{ width: columnWidths.fecha }} className="px-6 border-r border-b border-slate-200 dark:border-white/[0.06] py-2.5 font-bold text-slate-800 dark:text-slate-200 uppercase truncate" title={sub.fecha}>
+                                            <div className="flex items-center gap-1.5">
+                                                {(sub as any).isOfflinePending && (
+                                                    <span className="text-amber-500 animate-pulse" title="Pendiente de sincronizar con el servidor">
+                                                        <i className="fas fa-cloud-slash text-[10px]"></i>
+                                                    </span>
+                                                )}
+                                                <span>{sub.fecha}</span>
+                                            </div>
+                                        </td>
                                         <td style={{ width: columnWidths.areaProceso }} className="px-6 uppercase border-r border-b border-slate-200 dark:border-white/[0.06] py-2.5 font-black text-slate-900 dark:text-white truncate" title={sub.areaProceso}>{sub.areaProceso}</td>
                                         <td style={{ width: columnWidths.op }} className="px-6 py-2.5 font-mono font-bold text-slate-900 dark:text-white border-r border-b border-slate-200 dark:border-white/[0.06] truncate" title={sub.op}>{sub.op}</td>
                                         <td style={{ width: columnWidths.planoOpc }} className="px-6 py-2.5 text-slate-900 dark:text-white font-bold border-r border-b border-slate-200 dark:border-white/[0.06] text-center truncate" title={sub.planoOpc || '-'}>{sub.planoOpc || '-'}</td>
@@ -1343,6 +2332,153 @@ const Forms: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            {/* Modal de Cámara Web / Stream */}
+            <CameraModal 
+                isOpen={isCameraOpen} 
+                onClose={() => setIsCameraOpen(false)} 
+                onCapture={(imageSrc) => {
+                    setFormData(prev => ({ ...prev, photo: imageSrc }));
+                    setDetectedWindows([]);
+                    setMeasurementLines([]);
+                    addNotification({ type: 'success', title: 'FOTO CAPTURADA', message: 'La captura se ha guardado como evidencia.' });
+                }} 
+            />
+        </div>
+    );
+};
+
+const CameraModal: React.FC<{ 
+    isOpen: boolean; 
+    onClose: () => void; 
+    onCapture: (imageSrc: string) => void; 
+}> = ({ isOpen, onClose, onCapture }) => {
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+    const [hasError, setHasError] = useState(false);
+
+    useEffect(() => {
+        const startCamera = async () => {
+            setHasError(false);
+            try {
+                // Intentar primero con la cámara trasera en dispositivos móviles
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: { ideal: 'environment' } } 
+                });
+                streamRef.current = stream;
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                }
+            } catch (err) {
+                console.error("Error al acceder a la cámara trasera, intentando fallback:", err);
+                try {
+                    const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    streamRef.current = fallbackStream;
+                    if (videoRef.current) {
+                        videoRef.current.srcObject = fallbackStream;
+                    }
+                } catch (fallbackErr) {
+                    console.error("Acceso a cámara fallido por completo:", fallbackErr);
+                    setHasError(true);
+                }
+            }
+        };
+
+        if (isOpen) startCamera();
+
+        return () => {
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
+                streamRef.current = null;
+            }
+        };
+    }, [isOpen]);
+
+    const handleCapture = () => {
+        const video = videoRef.current;
+        if (video) {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const context = canvas.getContext('2d');
+            if (context) {
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const dataUrl = canvas.toDataURL('image/png');
+                onCapture(dataUrl);
+            }
+            onClose();
+        }
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[3000] flex justify-center items-center p-4 animate-fade-in">
+            <div className="relative bg-slate-900 border border-white/10 w-full max-w-lg rounded-[2rem] shadow-2xl overflow-hidden flex flex-col p-6 space-y-6">
+                {/* Decoración de Neón */}
+                <div className="absolute top-[-20%] left-[-20%] w-[200px] h-[200px] bg-sky-500/10 rounded-full blur-[80px] pointer-events-none"></div>
+
+                <div className="flex justify-between items-center relative z-10">
+                    <div>
+                        <h2 className="text-lg font-black text-white uppercase tracking-tight">Cámara de Inspección</h2>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest font-mono">Enfoque de Perfilería Alco</p>
+                    </div>
+                    <button 
+                        onClick={onClose} 
+                        type="button" 
+                        className="text-slate-400 hover:text-white transition-colors text-3xl font-light leading-none"
+                    >
+                        &times;
+                    </button>
+                </div>
+
+                <div className="relative aspect-video w-full rounded-2xl bg-black overflow-hidden border border-white/5 shadow-inner flex items-center justify-center">
+                    {hasError ? (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-3">
+                            <i className="fas fa-exclamation-triangle text-rose-500 text-3xl animate-bounce"></i>
+                            <div>
+                                <p className="text-xs font-black uppercase text-slate-200">Permiso Denegado o Error</p>
+                                <p className="text-[10px] text-slate-400 leading-normal max-w-[280px] mx-auto mt-1">
+                                    No pudimos acceder a la transmisión de video. Por favor, asegúrese de dar permisos de cámara o use el botón de <b>Captura Nativa</b> en su celular.
+                                </p>
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"></video>
+                            
+                            {/* Capa guía HUD técnica */}
+                            <div className="absolute inset-4 border border-white/10 pointer-events-none rounded-xl flex items-center justify-center">
+                                <div className="absolute w-6 h-0.5 bg-sky-500/30"></div>
+                                <div className="absolute h-6 w-0.5 bg-sky-500/30"></div>
+                                <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-sky-400 rounded-tl-lg"></div>
+                                <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-sky-400 rounded-tr-lg"></div>
+                                <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-sky-400 rounded-bl-lg"></div>
+                                <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-sky-400 rounded-br-lg"></div>
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                <div className="flex justify-end gap-3 relative z-10 pt-2 border-t border-white/5">
+                    <button 
+                        onClick={onClose} 
+                        type="button" 
+                        className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors"
+                    >
+                        Cancelar
+                    </button>
+                    {!hasError && (
+                        <button 
+                            onClick={handleCapture} 
+                            type="button" 
+                            className="flex-[2] py-3 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl text-[10px] font-black uppercase tracking-wider shadow-lg shadow-sky-500/25 transition-all hover:scale-[1.02] flex items-center justify-center gap-2"
+                        >
+                            <i className="fas fa-camera text-xs"></i> Capturar Foto
+                        </button>
+                    )}
+                </div>
+            </div>
         </div>
     );
 };

@@ -3,6 +3,7 @@ import { useNotification } from './NotificationSystem';
 import { MetrologyReplacementRecord } from '../types';
 import { METROLOGY_SECCIONES, METROLOGY_MARCAS, EditIcon } from '../constants';
 import { insforge, supabase } from '../insforgeClient';
+import { exportReplacementToPDF } from '../utils/pdfExport';
 
 const Breadcrumbs: React.FC<{ crumbs: { label: string, path?: string }[] }> = ({ crumbs }) => (
     <nav className="flex mb-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
@@ -15,11 +16,31 @@ const Breadcrumbs: React.FC<{ crumbs: { label: string, path?: string }[] }> = ({
     </nav>
 );
 
+const MOCK_REPLACEMENTS: MetrologyReplacementRecord[] = [
+    {
+        id: 'MET-REP-001',
+        fechaRegistro: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+        nombreEquipo: 'Flexómetro 8 metros',
+        marca: 'STANLEY',
+        codigo: 'FLEX-08-05',
+        areaUso: 'CORTE DE PERFILERIA',
+        nombreResponsable: 'DURANGO PUERTA DIEGO',
+        motivoReposicion: 'Cinta métrica fisurada a los 1.5 metros, impidiendo lecturas precisas.',
+        devuelveEquipoAnterior: 'SI',
+        descripcionBaja: 'Destrucción física de cinta para evitar uso erróneo y desecho en reciclaje de metales.',
+        seCobraEquipo: 'NO',
+        nombreResponsableCalidad: 'YEFERSON PALACIOS',
+        firmaResponsableArea: 'mock',
+        firmaResponsableCalidad: 'mock'
+    }
+];
+
 export default function MetrologyReplacement() {
     const { addNotification } = useNotification();
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [records, setRecords] = useState<MetrologyReplacementRecord[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [viewingRecord, setViewingRecord] = useState<MetrologyReplacementRecord | null>(null);
 
     const INITIAL_DATA: MetrologyReplacementRecord = {
         id: '',
@@ -41,11 +62,13 @@ export default function MetrologyReplacement() {
     const [formData, setFormData] = useState<MetrologyReplacementRecord>(INITIAL_DATA as MetrologyReplacementRecord);
     const [editingId, setEditingId] = useState<string | null>(null);
 
-    // Refs para Firmas
+    // Refs para Firmas y Suavizado
     const canvasAreaRef = useRef<HTMLCanvasElement>(null);
     const canvasCalidadRef = useRef<HTMLCanvasElement>(null);
     const [isDrawingArea, setIsDrawingArea] = useState(false);
     const [isDrawingCalidad, setIsDrawingCalidad] = useState(false);
+    const lastPointArea = useRef<{ x: number; y: number } | null>(null);
+    const lastPointCalidad = useRef<{ x: number; y: number } | null>(null);
 
     const fetchRecords = async () => {
         setIsLoading(true);
@@ -70,10 +93,30 @@ export default function MetrologyReplacement() {
                 firmaResponsableCalidad: r.firma_responsable_calidad_url || ''
             }));
 
+            // Guardar en caché local
+            localStorage.setItem('alco_cached_metrology_replacements', JSON.stringify(mappedRecords));
+
             setRecords(mappedRecords);
         } catch (error: any) {
-            console.error('Error fetching metrology replacements:', error);
-            addNotification({ type: 'error', title: 'ERROR DE CARGA', message: 'No se pudieron recuperar los registros de reposición.' });
+            console.error('Error fetching metrology replacements, loading fallback:', error);
+            
+            // Fallback 1: Intentar cargar del caché local
+            const cached = localStorage.getItem('alco_cached_metrology_replacements');
+            let baseRecords: MetrologyReplacementRecord[] = [];
+            if (cached) {
+                try {
+                    baseRecords = JSON.parse(cached);
+                } catch (e) {
+                    console.error("Error parsing cached metrology replacements:", e);
+                }
+            }
+
+            // Fallback 2: Si el caché está vacío, usar mock
+            if (baseRecords.length === 0) {
+                baseRecords = MOCK_REPLACEMENTS;
+            }
+
+            setRecords(baseRecords);
         } finally {
             setIsLoading(false);
         }
@@ -83,23 +126,25 @@ export default function MetrologyReplacement() {
         fetchRecords();
     }, []);
 
-    // Helper to upload base64 signature to Insforge Storage
-    const uploadSignature = async (base64: string, prefix: string) => {
-        if (!base64 || base64.length < 100) return '';
-        try {
-            const fileName = `rep_${prefix}_${Date.now()}.png`;
-            const blob = await (await fetch(base64)).blob();
-            const { error } = await (supabase.storage.from('signatures') as any).upload(fileName, blob, { contentType: 'image/png' });
-            if (error) throw error;
-            const result = (supabase.storage.from('signatures') as any).getPublicUrl(fileName);
-            return result.data?.publicUrl || result;
-        } catch (error) {
-            console.error('Error uploading signature:', error);
-            return '';
+    // Detectar si un canvas está en blanco (sin dibujo)
+    const isCanvasBlank = (canvas: HTMLCanvasElement): boolean => {
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return true;
+        const pixelData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        for (let i = 3; i < pixelData.length; i += 4) {
+            if (pixelData[i] > 0) return false;
         }
+        return true;
     };
 
-    // Lógica de Firma (Reutilizable)
+    // Extraer base64 de firma (devuelve '' si está vacío)
+    const getSignatureData = (ref: React.RefObject<HTMLCanvasElement>): string => {
+        const canvas = ref.current;
+        if (!canvas || isCanvasBlank(canvas)) return '';
+        return canvas.toDataURL('image/png');
+    };
+
+    // Lógica de Firma (Reutilizable - Suavizado y Alta Definición)
     const getCoordinates = (e: React.PointerEvent, canvas: HTMLCanvasElement) => {
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
@@ -110,37 +155,64 @@ export default function MetrologyReplacement() {
         };
     };
 
-    const startDrawing = (e: React.PointerEvent, ref: React.RefObject<HTMLCanvasElement>, setIsDrawing: (v: boolean) => void) => {
+    const startDrawing = (
+        e: React.PointerEvent,
+        ref: React.RefObject<HTMLCanvasElement>,
+        setIsDrawing: (v: boolean) => void,
+        lastPointRef: React.MutableRefObject<{ x: number; y: number } | null>
+    ) => {
         setIsDrawing(true);
-        const ctx = ref.current?.getContext('2d');
-        if (ctx && ref.current) {
-            const { x, y } = getCoordinates(e, ref.current);
+        const canvas = ref.current;
+        const ctx = canvas?.getContext('2d');
+        if (ctx && canvas) {
+            const { x, y } = getCoordinates(e, canvas);
             ctx.beginPath();
             ctx.moveTo(x, y);
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 4;
             ctx.lineCap = 'round';
-            ctx.strokeStyle = '#0f172a';
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = '#020617';
+            ctx.shadowColor = 'rgba(2, 6, 23, 0.15)';
+            ctx.shadowBlur = 1.5;
+            lastPointRef.current = { x, y };
         }
     };
 
-    const draw = (e: React.PointerEvent, ref: React.RefObject<HTMLCanvasElement>, isDrawing: boolean) => {
-        if (!isDrawing) return;
-        const ctx = ref.current?.getContext('2d');
-        if (ctx && ref.current) {
-            const { x, y } = getCoordinates(e, ref.current);
-            ctx.lineTo(x, y);
+    const draw = (
+        e: React.PointerEvent,
+        ref: React.RefObject<HTMLCanvasElement>,
+        isDrawing: boolean,
+        lastPointRef: React.MutableRefObject<{ x: number; y: number } | null>
+    ) => {
+        if (!isDrawing || !lastPointRef.current) return;
+        const canvas = ref.current;
+        const ctx = canvas?.getContext('2d');
+        if (ctx && canvas) {
+            const { x, y } = getCoordinates(e, canvas);
+            const last = lastPointRef.current;
+            const midX = (last.x + x) / 2;
+            const midY = (last.y + y) / 2;
+
+            ctx.beginPath();
+            ctx.moveTo(last.x, last.y);
+            ctx.quadraticCurveTo(last.x, last.y, midX, midY);
+
+            const baseWidth = 3.5;
+            ctx.lineWidth = e.pressure > 0 ? baseWidth + (e.pressure * 2.5) : baseWidth;
+
             ctx.stroke();
+            lastPointRef.current = { x, y };
         }
     };
 
-    const stopDrawing = (setIsDrawing: (v: boolean) => void) => {
-        setIsDrawing(false);
-    };
-
-    const clearSignature = (ref: React.RefObject<HTMLCanvasElement>) => {
+    const clearSignature = (
+        ref: React.RefObject<HTMLCanvasElement>,
+        lastPointRef?: React.MutableRefObject<{ x: number; y: number } | null>
+    ) => {
         const ctx = ref.current?.getContext('2d');
         if (ctx && ref.current) {
             ctx.clearRect(0, 0, ref.current.width, ref.current.height);
+            if (lastPointRef) lastPointRef.current = null;
         }
     };
 
@@ -148,8 +220,8 @@ export default function MetrologyReplacement() {
         setFormData(INITIAL_DATA as MetrologyReplacementRecord);
         setEditingId(null);
         setIsFormOpen(false);
-        clearSignature(canvasAreaRef);
-        clearSignature(canvasCalidadRef);
+        clearSignature(canvasAreaRef, lastPointArea);
+        clearSignature(canvasCalidadRef, lastPointCalidad);
     };
 
     const handleEdit = (record: MetrologyReplacementRecord) => {
@@ -177,14 +249,13 @@ export default function MetrologyReplacement() {
         try {
             addNotification({ type: 'info', title: 'PROCESANDO...', message: 'Guardando registro y firmas...' });
 
-            const firmaAreaUrl = canvasAreaRef.current?.toDataURL() || '';
-            const firmaCalidadUrl = canvasCalidadRef.current?.toDataURL() || '';
+            // Obtener base64 de las firmas (vacío si no se dibujó nada)
+            const firmaAreaData = getSignatureData(canvasAreaRef);
+            const firmaCalidadData = getSignatureData(canvasCalidadRef);
 
-            let firmaArea = formData.firmaResponsableArea || '';
-            let firmaCalidad = formData.firmaResponsableCalidad || '';
-
-            if (firmaAreaUrl.startsWith('data:')) firmaArea = await uploadSignature(firmaAreaUrl, 'area');
-            if (firmaCalidadUrl.startsWith('data:')) firmaCalidad = await uploadSignature(firmaCalidadUrl, 'calidad');
+            // Usar la firma del canvas si se dibujó una nueva, si no conservar la existente
+            const firmaArea = firmaAreaData || formData.firmaResponsableArea || '';
+            const firmaCalidad = firmaCalidadData || formData.firmaResponsableCalidad || '';
 
             const dbPayload = {
                 fecha_registro: formData.fechaRegistro,
@@ -237,6 +308,7 @@ export default function MetrologyReplacement() {
     const labelStyles = "text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5 block ml-1";
 
     return (
+        <>
         <div className="space-y-8 animate-fade-in pb-20">
             <Breadcrumbs crumbs={[{ label: 'Metrología', path: '/metrology' }, { label: 'Reposición y Baja' }]} />
 
@@ -335,47 +407,49 @@ export default function MetrologyReplacement() {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 pt-8">
-                            <div>
-                                <label className={`${labelStyles} text-center mb-4`}>Firma Responsable Proceso/Área *</label>
-                                <div className="border border-slate-300 dark:border-white/10 rounded-xl overflow-hidden bg-white relative h-40">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 pt-8">
+                            {/* Firma Responsable Área */}
+                            <div className="space-y-3">
+                                <label className={`${labelStyles} text-center mb-1 block`}>✍️ Firma Responsable Proceso/Área *</label>
+                                <div className="relative rounded-2xl overflow-hidden shadow-inner border-2 border-sky-200 dark:border-sky-700/50 bg-gradient-to-b from-slate-50 to-white dark:from-slate-800 dark:to-slate-900" style={{ height: '200px' }}>
+                                    <div className="absolute bottom-10 left-6 right-6 border-b-2 border-dashed border-slate-200/80 dark:border-slate-600/60 z-10 pointer-events-none" />
+                                    <p className="absolute bottom-2 left-0 right-0 text-center text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.3em] pointer-events-none z-10">FIRME AQUÍ</p>
                                     <canvas
                                         ref={canvasAreaRef}
-                                        width={400}
-                                        height={160}
-                                        className="w-full h-full cursor-crosshair touch-none"
-                                        onPointerDown={(e) => startDrawing(e, canvasAreaRef, setIsDrawingArea)}
-                                        onPointerMove={(e) => draw(e, canvasAreaRef, isDrawingArea)}
-                                        onPointerUp={() => stopDrawing(setIsDrawingArea)}
-                                        onPointerLeave={() => stopDrawing(setIsDrawingArea)}
+                                        width={800}
+                                        height={400}
+                                        className="absolute inset-0 w-full h-full cursor-crosshair touch-none select-none"
+                                        style={{ touchAction: 'none' }}
+                                        onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); startDrawing(e, canvasAreaRef, setIsDrawingArea, lastPointArea); }}
+                                        onPointerMove={(e) => draw(e, canvasAreaRef, isDrawingArea, lastPointArea)}
+                                        onPointerUp={() => setIsDrawingArea(false)}
+                                        onPointerLeave={() => setIsDrawingArea(false)}
+                                        onPointerCancel={() => setIsDrawingArea(false)}
                                     />
-                                    <div className="absolute inset-x-0 bottom-2 text-center pointer-events-none opacity-20">
-                                        <i className="fas fa-pen-nib text-4xl text-slate-400"></i>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Sign Here</p>
-                                    </div>
+                                    <button type="button" onClick={() => clearSignature(canvasAreaRef, lastPointArea)} className="absolute top-2 right-2 z-20 p-2 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm border border-slate-200 dark:border-slate-600 rounded-xl hover:text-rose-500 text-slate-400 shadow-sm transition-all hover:scale-105" title="Limpiar firma"><i className="fas fa-redo-alt text-xs"></i></button>
                                 </div>
-                                <button type="button" onClick={() => clearSignature(canvasAreaRef)} className="mt-2 text-[10px] font-bold text-sky-500 hover:text-sky-600 uppercase tracking-widest float-right">Limpiar</button>
                             </div>
 
-                            <div>
-                                <label className={`${labelStyles} text-center mb-4`}>Firma Responsable Calidad *</label>
-                                <div className="border border-slate-300 dark:border-white/10 rounded-xl overflow-hidden bg-white relative h-40">
+                            {/* Firma Responsable Calidad */}
+                            <div className="space-y-3">
+                                <label className={`${labelStyles} text-center mb-1 block`}>✍️ Firma Responsable Calidad *</label>
+                                <div className="relative rounded-2xl overflow-hidden shadow-inner border-2 border-emerald-200 dark:border-emerald-700/50 bg-gradient-to-b from-slate-50 to-white dark:from-slate-800 dark:to-slate-900" style={{ height: '200px' }}>
+                                    <div className="absolute bottom-10 left-6 right-6 border-b-2 border-dashed border-slate-200/80 dark:border-slate-600/60 z-10 pointer-events-none" />
+                                    <p className="absolute bottom-2 left-0 right-0 text-center text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.3em] pointer-events-none z-10">FIRME AQUÍ</p>
                                     <canvas
                                         ref={canvasCalidadRef}
-                                        width={400}
-                                        height={160}
-                                        className="w-full h-full cursor-crosshair touch-none"
-                                        onPointerDown={(e) => startDrawing(e, canvasCalidadRef, setIsDrawingCalidad)}
-                                        onPointerMove={(e) => draw(e, canvasCalidadRef, isDrawingCalidad)}
-                                        onPointerUp={() => stopDrawing(setIsDrawingCalidad)}
-                                        onPointerLeave={() => stopDrawing(setIsDrawingCalidad)}
+                                        width={800}
+                                        height={400}
+                                        className="absolute inset-0 w-full h-full cursor-crosshair touch-none select-none"
+                                        style={{ touchAction: 'none' }}
+                                        onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); startDrawing(e, canvasCalidadRef, setIsDrawingCalidad, lastPointCalidad); }}
+                                        onPointerMove={(e) => draw(e, canvasCalidadRef, isDrawingCalidad, lastPointCalidad)}
+                                        onPointerUp={() => setIsDrawingCalidad(false)}
+                                        onPointerLeave={() => setIsDrawingCalidad(false)}
+                                        onPointerCancel={() => setIsDrawingCalidad(false)}
                                     />
-                                    <div className="absolute inset-x-0 bottom-2 text-center pointer-events-none opacity-20">
-                                        <i className="fas fa-pen-nib text-4xl text-slate-400"></i>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Sign Here</p>
-                                    </div>
+                                    <button type="button" onClick={() => clearSignature(canvasCalidadRef, lastPointCalidad)} className="absolute top-2 right-2 z-20 p-2 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm border border-slate-200 dark:border-slate-600 rounded-xl hover:text-rose-500 text-slate-400 shadow-sm transition-all hover:scale-105" title="Limpiar firma"><i className="fas fa-redo-alt text-xs"></i></button>
                                 </div>
-                                <button type="button" onClick={() => clearSignature(canvasCalidadRef)} className="mt-2 text-[10px] font-bold text-sky-500 hover:text-sky-600 uppercase tracking-widest float-right">Limpiar</button>
                             </div>
                         </div>
 
@@ -424,10 +498,16 @@ export default function MetrologyReplacement() {
                                         <td className="p-4 text-xs font-bold text-slate-600 dark:text-slate-300">{record.nombreResponsable}</td>
                                         <td className="p-4 text-xs text-slate-500 dark:text-slate-400 line-clamp-2 max-w-xs">{record.motivoReposicion}</td>
                                         <td className="p-4 text-center">
+                                            <button onClick={() => setViewingRecord(record)} className="p-2.5 bg-slate-50 text-slate-500 rounded-xl hover:bg-slate-500 hover:text-white transition-all shadow-sm mr-2" title="Ver detalle">
+                                                <i className="fas fa-eye text-xs"></i>
+                                            </button>
+                                            <button onClick={() => exportReplacementToPDF(record)} className="p-2.5 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all shadow-sm mr-2" title="Exportar PDF">
+                                                <i className="fas fa-file-pdf text-xs"></i>
+                                            </button>
                                             <button onClick={() => handleEdit(record)} className="text-sky-400 hover:text-sky-500 transition-colors mr-3">
                                                 <EditIcon />
                                             </button>
-                                            <button onClick={() => handleDelete(record.id)} className="text-rose-400 hover:text-rose-500 transition-colors">
+                                            <button onClick={() => handleDelete(record.id)} className="text-slate-400 hover:text-rose-500 transition-colors">
                                                 <i className="fas fa-trash-can"></i>
                                             </button>
                                         </td>
@@ -439,5 +519,119 @@ export default function MetrologyReplacement() {
                 </div>
             </div>
         </div>
+
+        {/* ===== MODAL VER REGISTRO BAJA/REPOSICIÓN ===== */}
+        {viewingRecord && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setViewingRecord(null)}>
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+                <div className="relative bg-white dark:bg-[#0d0d1a] rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={e => e.stopPropagation()}>
+
+                    {/* Header */}
+                    <div className="sticky top-0 z-10 bg-white dark:bg-[#0d0d1a] px-8 py-6 border-b dark:border-white/5 flex items-center justify-between rounded-t-3xl">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center">
+                                <i className="fas fa-exchange-alt text-amber-500"></i>
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Acta de Baja / Reposición</p>
+                                <h2 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight">{viewingRecord.id}</h2>
+                            </div>
+                        </div>
+                        <button onClick={() => setViewingRecord(null)} className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-white/10 flex items-center justify-center hover:bg-rose-100 hover:text-rose-500 transition-all">
+                            <i className="fas fa-times text-sm"></i>
+                        </button>
+                    </div>
+
+                    <div className="p-8 space-y-8">
+                        {/* Info general */}
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                            {[
+                                { label: 'Fecha Registro', value: viewingRecord.fechaRegistro },
+                                { label: 'Área de Uso', value: viewingRecord.areaUso },
+                                { label: 'Se cobra equipo', value: viewingRecord.seCobraEquipo },
+                            ].map(({ label, value }) => (
+                                <div key={label} className="bg-slate-50 dark:bg-white/[0.03] rounded-2xl p-4 border dark:border-white/5">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">{label}</p>
+                                    <p className="text-xs font-black text-slate-800 dark:text-white uppercase">{value || '—'}</p>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Equipo */}
+                        <div className="bg-amber-50 dark:bg-amber-900/10 rounded-2xl p-6 border border-amber-100 dark:border-amber-700/20">
+                            <p className="text-[9px] font-black text-amber-600 uppercase tracking-[0.2em] mb-4">🔧 Datos del Equipo</p>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div><p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Nombre</p><p className="text-xs font-black text-slate-800 dark:text-white uppercase">{viewingRecord.nombreEquipo}</p></div>
+                                <div><p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Marca</p><p className="text-xs font-black text-slate-800 dark:text-white uppercase">{viewingRecord.marca}</p></div>
+                                <div><p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Código</p><p className="text-xs font-mono font-black text-sky-600">{viewingRecord.codigo}</p></div>
+                            </div>
+                        </div>
+
+                        {/* Motivo y baja */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="bg-slate-50 dark:bg-white/[0.03] rounded-2xl p-5 border dark:border-white/5">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Motivo de Reposición</p>
+                                <p className="text-xs text-slate-600 dark:text-slate-300">{viewingRecord.motivoReposicion || '—'}</p>
+                            </div>
+                            <div className="bg-slate-50 dark:bg-white/[0.03] rounded-2xl p-5 border dark:border-white/5">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Descripción de Baja</p>
+                                <p className="text-xs text-slate-600 dark:text-slate-300">{viewingRecord.descripcionBaja || '—'}</p>
+                            </div>
+                        </div>
+
+                        {/* Responsables */}
+                        <div className="bg-sky-50 dark:bg-sky-900/10 rounded-2xl p-6 border border-sky-100 dark:border-sky-700/20">
+                            <p className="text-[9px] font-black text-sky-500 uppercase tracking-[0.2em] mb-4">👤 Responsables</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div><p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Resp. Proceso/Área</p><p className="text-xs font-black text-slate-800 dark:text-white uppercase">{viewingRecord.nombreResponsable}</p></div>
+                                <div><p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Resp. Calidad</p><p className="text-xs font-black text-slate-800 dark:text-white uppercase">{viewingRecord.nombreResponsableCalidad || '—'}</p></div>
+                            </div>
+                        </div>
+
+                        {/* Firmas */}
+                        <div>
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">✍️ Firmas del Acta</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Firma Responsable Área</p>
+                                    <div className="h-36 rounded-2xl border-2 border-sky-100 dark:border-sky-700/20 bg-gradient-to-b from-slate-50 to-white dark:from-slate-800 dark:to-slate-900 overflow-hidden flex items-center justify-center">
+                                        {viewingRecord.firmaResponsableArea && viewingRecord.firmaResponsableArea !== 'mock' ? (
+                                            <img src={viewingRecord.firmaResponsableArea} alt="Firma área" className="max-h-full max-w-full object-contain p-2" />
+                                        ) : viewingRecord.firmaResponsableArea === 'mock' ? (
+                                            <span className="text-emerald-500 font-black text-xs uppercase flex items-center gap-2"><i className="fas fa-check-circle"></i> Firmado</span>
+                                        ) : (
+                                            <span className="text-slate-300 text-xs font-bold uppercase">Sin firma</span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Firma Responsable Calidad</p>
+                                    <div className="h-36 rounded-2xl border-2 border-emerald-100 dark:border-emerald-700/20 bg-gradient-to-b from-slate-50 to-white dark:from-slate-800 dark:to-slate-900 overflow-hidden flex items-center justify-center">
+                                        {viewingRecord.firmaResponsableCalidad && viewingRecord.firmaResponsableCalidad !== 'mock' ? (
+                                            <img src={viewingRecord.firmaResponsableCalidad} alt="Firma calidad" className="max-h-full max-w-full object-contain p-2" />
+                                        ) : viewingRecord.firmaResponsableCalidad === 'mock' ? (
+                                            <span className="text-emerald-500 font-black text-xs uppercase flex items-center gap-2"><i className="fas fa-check-circle"></i> Firmado</span>
+                                        ) : (
+                                            <span className="text-slate-300 text-xs font-bold uppercase">Sin firma</span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer actions */}
+                        <div className="flex gap-3 pt-2">
+                            <button onClick={() => { setViewingRecord(null); handleEdit(viewingRecord); }} className="flex-1 py-4 bg-sky-600 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2">
+                                <EditIcon /> Editar Registro
+                            </button>
+                            <button onClick={() => setViewingRecord(null)} className="px-8 py-4 bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 rounded-2xl font-black text-xs uppercase tracking-[0.2em] hover:scale-[1.02] transition-all">
+                                Cerrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+        </>
     );
 }

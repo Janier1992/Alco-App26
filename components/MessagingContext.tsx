@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode } from 'react';
 import type { Conversation, ChatMessage, ChatParticipant, User } from '../types';
-import { supabase } from '../insforgeClient';
+import { supabase, insforge } from '../insforgeClient';
 
 interface MessagingContextType {
     conversations: Conversation[];
@@ -24,6 +24,7 @@ interface MessagingContextType {
     refreshConversations: () => void;
     directoryUsers: User[];
     uploadAttachment: (file: File, type: 'image' | 'file') => Promise<void>;
+    deleteConversation: (id: string) => Promise<void>;
 }
 
 const MessagingContext = createContext<MessagingContextType | undefined>(undefined);
@@ -383,8 +384,11 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
             const { error } = await supabase.from('messages').insert([dbPayload]);
             if (error) throw error;
 
-            // Insert read receipt for sender
-            // (we'll get the message id from refetch)
+            // Notify other clients instantly via WebSockets
+            insforge.realtime.publish('chat_sync', 'new_message', {
+                conversationId: convId,
+                senderId: userId
+            }).catch(err => console.warn('Realtime publish error:', err));
 
             // Refresh messages to show the new one
             await fetchMessages(convId);
@@ -431,6 +435,12 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
 
             const { error: msgErr } = await supabase.from('messages').insert([dbPayload]);
             if (msgErr) throw msgErr;
+
+            // Notify other clients instantly via WebSockets
+            insforge.realtime.publish('chat_sync', 'new_message', {
+                conversationId: convId,
+                senderId: userId
+            }).catch(err => console.warn('Realtime publish error:', err));
 
             await fetchMessages(convId);
             await fetchConversations();
@@ -536,33 +546,136 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
         }
     }, [userId, userName, conversations, fetchConversations, setActiveConversation]);
 
+    // ─── Delete conversation ──────────────────────────────────
+    const deleteConversation = useCallback(async (conversationId: string) => {
+        try {
+            // 1. Get messages in this conversation
+            const { data: msgRows } = await supabase
+                .from('messages')
+                .select('id')
+                .eq('conversation_id', conversationId);
+            const msgIds = (msgRows || []).map(m => m.id);
+
+            // 2. Delete message reads
+            if (msgIds.length > 0) {
+                await supabase
+                    .from('message_reads')
+                    .delete()
+                    .in('message_id', msgIds);
+            }
+
+            // 3. Delete messages
+            await supabase
+                .from('messages')
+                .delete()
+                .eq('conversation_id', conversationId);
+
+            // 4. Delete participants
+            await supabase
+                .from('conversation_participants')
+                .delete()
+                .eq('conversation_id', conversationId);
+
+            // 5. Delete conversation
+            const { error } = await supabase
+                .from('conversations')
+                .delete()
+                .eq('id', conversationId);
+            if (error) throw error;
+
+            // If deleted was active, reset active
+            if (activeConvIdRef.current === conversationId) {
+                setActiveConversation(null);
+            }
+
+            // Refresh conversations list
+            await fetchConversations();
+        } catch (error) {
+            console.error('Error deleting conversation:', error);
+        }
+    }, [fetchConversations, setActiveConversation]);
+
+    const fetchConversationsRef = useRef(fetchConversations);
+    const fetchMessagesRef = useRef(fetchMessages);
+
+    useEffect(() => {
+        fetchConversationsRef.current = fetchConversations;
+    }, [fetchConversations]);
+
+    useEffect(() => {
+        fetchMessagesRef.current = fetchMessages;
+    }, [fetchMessages]);
+
     // ─── Initial load ─────────────────────────────────────────
     useEffect(() => {
         if (userId) {
-            fetchConversations();
+            fetchConversationsRef.current();
         }
-    }, [userId, fetchConversations]);
+    }, [userId]);
+
+    // ─── Realtime WebSocket Listeners ────────────────────────
+    useEffect(() => {
+        if (!userId) return;
+
+        let isSubscribed = false;
+        
+        const connectRealtime = async () => {
+            try {
+                await insforge.realtime.connect();
+                const res = await insforge.realtime.subscribe('chat_sync');
+                if (res.ok) {
+                    isSubscribed = true;
+                }
+            } catch (err) {
+                console.warn('Realtime connection failed:', err);
+            }
+        };
+
+        const handleNewMessage = (payload: any) => {
+            const data = payload?.payload || payload;
+            const msgConvId = data?.conversationId;
+            const msgSenderId = data?.senderId;
+
+            if (msgSenderId && msgSenderId !== userId) {
+                if (msgConvId && msgConvId === activeConvIdRef.current) {
+                    fetchMessagesRef.current(msgConvId);
+                }
+                fetchConversationsRef.current();
+            }
+        };
+
+        connectRealtime();
+
+        insforge.realtime.on('new_message', handleNewMessage);
+
+        return () => {
+            insforge.realtime.off('new_message', handleNewMessage);
+            if (isSubscribed) {
+                insforge.realtime.unsubscribe('chat_sync');
+            }
+        };
+    }, [userId]);
 
     // ─── Polling for real-time updates ────────────────────────
-    // Poll every 5 seconds for new messages and conversation updates
+    // Poll every 2.5 seconds for new messages and conversation updates
     useEffect(() => {
         if (!userId) return;
 
         pollIntervalRef.current = setInterval(() => {
             // Refresh active conversation messages
             if (activeConvIdRef.current) {
-                fetchMessages(activeConvIdRef.current);
+                fetchMessagesRef.current(activeConvIdRef.current);
             }
             // Refresh conversation list (for unread counts, last messages)
-            fetchConversations();
-        }, 5000);
+            fetchConversationsRef.current();
+        }, 2500);
 
         return () => {
             if (pollIntervalRef.current) {
                 clearInterval(pollIntervalRef.current);
             }
         };
-    }, [userId, fetchMessages, fetchConversations]);
+    }, [userId]);
 
     return (
         <MessagingContext.Provider value={{
@@ -574,6 +687,7 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
             refreshConversations: fetchConversations,
             directoryUsers,
             uploadAttachment,
+            deleteConversation,
         }}>
             {children}
         </MessagingContext.Provider>

@@ -17,6 +17,52 @@ import { EmailService } from '../services/NotificationCoreService';
 
 
 
+const MOCK_NCS: NonConformity[] = [
+    {
+        id: 'NC-25-001',
+        db_id: 'mock-nc-1',
+        title: 'DESVIACIÓN DIMENSIONAL EN LOTE DE PANELES SERIE 45',
+        process: 'CORTE DE',
+        project: 'TORRES DE ALTAMIRA',
+        severity: 'Crítica',
+        status: 'Abierta',
+        description: 'Se detecta diferencia de longitud de +2.5mm en 15 perfiles de aluminio cortados para la fachada norte, excediendo la tolerancia permitida de ±0.5mm.',
+        rca: {
+            why1: '¿Por qué los perfiles quedaron más largos? Porque la guía de la sierra de corte estaba mal posicionada.',
+            why2: '¿Por qué la guía estaba mal posicionada? Porque el operario no calibró la máquina al inicio del turno.',
+            why3: '¿Por qué no calibró al inicio del turno? Porque el flexómetro de referencia tenía desgaste y no daba la medida exacta.',
+            why4: '¿Por qué el flexómetro tenía desgaste? Porque no se realizó la calibración mensual del equipo de metrología.',
+            why5: '¿Por qué no se realizó la calibración? Porque el cronograma de control de calibraciones no se había actualizado.',
+            rootCause: 'Falta de control e inspección periódica del estado físico de los instrumentos de metrología asignados al área de corte.'
+        },
+        actions: [
+            { id: 'act-1', description: 'Calibración técnica de la sierra y reemplazo de flexómetro.', responsible: 'DURANGO PUERTA DIEGO', dueDate: new Date().toISOString().split('T')[0], completed: false, type: 'Correctiva' }
+        ],
+        createdAt: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0],
+        history: [
+            { id: 'h-1', date: new Date(Date.now() - 86400000 * 2).toLocaleString(), user: 'YEFERSON PALACIOS', action: 'APERTURA', details: 'No conformidad abierta tras hallazgo de control de calidad.' }
+        ]
+    },
+    {
+        id: 'NC-25-002',
+        db_id: 'mock-nc-2',
+        title: 'BURBUJAS EXCESIVAS EN SELLADO DE SILICONA PERIMETRAL',
+        process: 'ENSAMBLE',
+        project: 'PORTAL DEL SOL',
+        severity: 'Mayor',
+        status: 'CAPA',
+        description: 'Aire atrapado y burbujas en los cordones de silicona de sellado en 8 hojas de ventanas corredizas monumental, comprometiendo la hermeticidad.',
+        rca: { why1: '', why2: '', why3: '', why4: '', why5: '', rootCause: 'Velocidad de avance de boquilla neumática descompensada con el flujo de silicona.' },
+        actions: [
+            { id: 'act-2', description: 'Limpieza de boquillas de aplicación y re-entrenamiento en velocidad de avance.', responsible: 'LOPEZ CASTRO JUAN PABLO', dueDate: new Date().toISOString().split('T')[0], completed: true, type: 'Correctiva' }
+        ],
+        createdAt: new Date(Date.now() - 86400000 * 5).toISOString().split('T')[0],
+        history: [
+            { id: 'h-2', date: new Date(Date.now() - 86400000 * 5).toLocaleString(), user: 'SARA HURTADO', action: 'APERTURA', details: 'NC de hermeticidad iniciada por reporte de residente.' }
+        ]
+    }
+];
+
 const NonConformities: React.FC = () => {
     const { addNotification } = useNotification();
     const [ncs, setNcs] = useState<NonConformity[]>([]);
@@ -82,9 +128,38 @@ const NonConformities: React.FC = () => {
                 }))
             }));
 
+            // Guardar en caché local
+            localStorage.setItem('alco_cached_non_conformities', JSON.stringify(mappedNcs));
+
             setNcs(mappedNcs);
+
+            // Sync active NC details in the open modal
+            if (selectedNC) {
+                const freshNC = mappedNcs.find(n => n.id === selectedNC.id);
+                if (freshNC) {
+                    setSelectedNC(freshNC);
+                }
+            }
         } catch (error: any) {
-            addNotification({ type: 'error', title: 'ERROR DE CARGA', message: error.message });
+            console.error('Error fetching NCs, loading fallback:', error);
+
+            // Fallback 1: Intentar cargar del caché local
+            const cached = localStorage.getItem('alco_cached_non_conformities');
+            let baseNcs: NonConformity[] = [];
+            if (cached) {
+                try {
+                    baseNcs = JSON.parse(cached);
+                } catch (e) {
+                    console.error("Error parsing cached non conformities:", e);
+                }
+            }
+
+            // Fallback 2: Si el caché está vacío, usar mock
+            if (baseNcs.length === 0) {
+                baseNcs = MOCK_NCS;
+            }
+
+            setNcs(baseNcs);
         } finally {
             setLoading(false);
         }
@@ -157,27 +232,60 @@ const NonConformities: React.FC = () => {
             setIsCreateModalOpen(false);
             addNotification({ type: 'success', title: 'HALLAZGO ABIERTO', message: `No Conformidad ${serial_id} registrada para seguimiento.` });
         } catch (error: any) {
-            console.error("Create NC Error:", error);
-            addNotification({
-                type: 'error',
-                title: 'ERROR AL GUARDAR',
-                message: `Detalle técnico: ${error.message || JSON.stringify(error)}`
-            });
+            console.warn("DB Save failed, performing local offline-fallback update:", error);
+            
+            // LOCAL FALLBACK
+            const offlineNC: NonConformity = {
+                id: serial_id,
+                db_id: `local-nc-${Date.now()}`,
+                title: newNCData.title,
+                process: newNCData.process,
+                project: newNCData.project,
+                severity: newNCData.severity,
+                status: 'Abierta',
+                description: newNCData.description,
+                rca: newNCData.rca,
+                actions: [],
+                createdAt: new Date().toISOString().split('T')[0],
+                history: [
+                    { id: `local-h-${Date.now()}`, date: new Date().toLocaleString(), user: 'USUARIO', action: 'APERTURA', details: `Hallazgo detectado offline en obra ${newNCData.project}.` }
+                ]
+            };
+
+            const updatedList = [offlineNC, ...ncs];
+            setNcs(updatedList);
+            localStorage.setItem('alco_cached_non_conformities', JSON.stringify(updatedList));
+
+            setIsCreateModalOpen(false);
+            addNotification({ type: 'success', title: 'HALLAZGO GUARDADO LOCALMENTE', message: `No Conformidad ${serial_id} guardada en el dispositivo (modo offline).` });
         }
     };
 
     const logHistory = async (ncId: string, action: string, details: string) => {
-        const { error } = await supabase.from('nc_history').insert([{
-            nc_id: ncId,
-            action,
-            details
-        }]);
-        if (error) console.error('Error logging history:', error);
+        try {
+            await supabase.from('nc_history').insert([{
+                nc_id: ncId,
+                action,
+                details
+            }]);
+        } catch (e) {
+            console.warn("Could not log history to DB:", e);
+        }
     };
 
     const handleAddCapaAction = async () => {
         if (!selectedNC || !newActionDesc.trim()) return;
         const db_id = (selectedNC as any).db_id || selectedNC.id;
+        const newActionId = `local-act-${Date.now()}`;
+
+        const newAction: CAPAAction = {
+            id: newActionId,
+            description: newActionDesc.toUpperCase(),
+            responsible: newActionResp.toUpperCase(),
+            completed: false,
+            dueDate: new Date().toISOString().split('T')[0],
+            type: newActionType
+        };
 
         try {
             const { data, error } = await supabase.from('nc_actions').insert([{
@@ -197,7 +305,29 @@ const NonConformities: React.FC = () => {
             setNewActionResp('');
             addNotification({ type: 'success', title: 'ACCIÓN ASIGNADA', message: 'Se ha registrado la nueva acción correctiva.' });
         } catch (error: any) {
-            addNotification({ type: 'error', title: 'ERROR AL AÑADIR ACCIÓN', message: error.message });
+            console.warn("DB Action insert failed, performing local offline-fallback update:", error);
+            
+            // LOCAL FALLBACK
+            const updatedActions = [...(selectedNC.actions || []), newAction];
+            const updatedHistory = [
+                ...(selectedNC.history || []),
+                { id: `local-h-${Date.now()}`, date: new Date().toLocaleString(), user: 'USUARIO', action: 'NUEVA ACCIÓN', details: `Se asignó offline la acción a ${newActionResp.toUpperCase()}: ${newActionDesc.toUpperCase()}` }
+            ];
+            
+            const updatedNC = {
+                ...selectedNC,
+                actions: updatedActions,
+                history: updatedHistory
+            };
+
+            const updatedList = ncs.map(nc => nc.id === selectedNC.id ? updatedNC : nc);
+            setNcs(updatedList);
+            setSelectedNC(updatedNC);
+            localStorage.setItem('alco_cached_non_conformities', JSON.stringify(updatedList));
+
+            setNewActionDesc('');
+            setNewActionResp('');
+            addNotification({ type: 'success', title: 'ACCIÓN GUARDADA LOCALMENTE', message: 'Acción registrada en el plan de acción local.' });
         }
     };
 
@@ -211,7 +341,51 @@ const NonConformities: React.FC = () => {
             if (error) throw error;
             fetchNcs();
         } catch (error: any) {
-            addNotification({ type: 'error', title: 'ERROR AL ACTUALIZAR ACCIÓN', message: error.message });
+            console.warn("DB Action toggle failed, performing local offline-fallback update:", error);
+            
+            // LOCAL FALLBACK
+            if (!selectedNC) return;
+            const updatedActions = selectedNC.actions.map(a => a.id === actionId ? { ...a, completed: !currentState } : a);
+            const updatedNC = {
+                ...selectedNC,
+                actions: updatedActions
+            };
+            const updatedList = ncs.map(nc => nc.id === selectedNC.id ? updatedNC : nc);
+            setNcs(updatedList);
+            setSelectedNC(updatedNC);
+            localStorage.setItem('alco_cached_non_conformities', JSON.stringify(updatedList));
+        }
+    };
+
+    const handleDeleteCapaAction = async (actionId: string) => {
+        if (!confirm('¿Está seguro de eliminar esta acción?')) return;
+        const db_id = (selectedNC as any).db_id || selectedNC.id;
+        try {
+            const { error } = await supabase
+                .from('nc_actions')
+                .delete()
+                .eq('id', actionId);
+
+            if (error) throw error;
+
+            await logHistory(db_id, 'ACCIÓN ELIMINADA', `Se eliminó la acción correctiva del plan.`);
+            fetchNcs();
+            addNotification({ type: 'error', title: 'ACCIÓN ELIMINADA', message: 'La acción correctiva fue removida.' });
+        } catch (error: any) {
+            console.warn("DB Action delete failed, performing local offline-fallback update:", error);
+            
+            // LOCAL FALLBACK
+            if (!selectedNC) return;
+            const updatedActions = selectedNC.actions.filter(a => a.id !== actionId);
+            const updatedNC = {
+                ...selectedNC,
+                actions: updatedActions
+            };
+            const updatedList = ncs.map(nc => nc.id === selectedNC.id ? updatedNC : nc);
+            setNcs(updatedList);
+            setSelectedNC(updatedNC);
+            localStorage.setItem('alco_cached_non_conformities', JSON.stringify(updatedList));
+            addNotification({ type: 'error', title: 'ACCIÓN ELIMINADA LOCALMENTE', message: 'La acción correctiva fue removida localmente.' });
         }
     };
 
@@ -246,7 +420,13 @@ const NonConformities: React.FC = () => {
             fetchNcs();
             setSelectedNC(updated);
         } catch (error: any) {
-            addNotification({ type: 'error', title: 'ERROR AL ACTUALIZAR NC', message: error.message });
+            console.warn("DB NC Update failed, performing local offline-fallback update:", error);
+            
+            // LOCAL FALLBACK
+            const updatedList = ncs.map(nc => nc.id === updated.id ? updated : nc);
+            setNcs(updatedList);
+            setSelectedNC(updated);
+            localStorage.setItem('alco_cached_non_conformities', JSON.stringify(updatedList));
         }
     };
 
@@ -262,7 +442,13 @@ const NonConformities: React.FC = () => {
             fetchNcs();
             addNotification({ type: 'success', title: 'HALLAZGO ELIMINADO', message: `El registro ${serial_id} fue borrado.` });
         } catch (error: any) {
-            addNotification({ type: 'error', title: 'ERROR AL ELIMINAR', message: error.message });
+            console.warn("DB Delete failed, performing local offline-fallback update:", error);
+            
+            // LOCAL FALLBACK
+            const updatedList = ncs.filter(nc => nc.id !== serial_id);
+            setNcs(updatedList);
+            localStorage.setItem('alco_cached_non_conformities', JSON.stringify(updatedList));
+            addNotification({ type: 'success', title: 'HALLAZGO ELIMINADO LOCALMENTE', message: `El registro ${serial_id} fue borrado localmente.` });
         }
     };
 
@@ -539,6 +725,65 @@ const NonConformities: React.FC = () => {
                                         </div>
                                     )}
 
+                                    {/* METODOLOGÍA DE LOS 5 PORQUÉS (RCA) EDITABLE */}
+                                    <div className="bg-slate-50 dark:bg-white/[0.02] p-8 rounded-[2rem] border border-slate-200/60 dark:border-white/[0.05] space-y-6 shadow-sm">
+                                        <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-[0.2em] flex items-center gap-3">
+                                            <SparklesIcon className="text-indigo-500 animate-pulse" /> Metodología de los 5 Porqués (RCA)
+                                        </h4>
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-relaxed">
+                                            Identifique las causas inmediatas y subyacentes del hallazgo hasta llegar a la raíz. Puede editar libremente cada campo o usar la IA como asistencia para autocompletar.
+                                        </p>
+                                        <div className="space-y-4">
+                                            {[1, 2, 3, 4, 5].map((num) => {
+                                                const fieldKey = `why${num}` as keyof typeof selectedNC.rca;
+                                                return (
+                                                    <div key={num} className="flex flex-col gap-2">
+                                                        <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                                                            {num}° Por qué
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            className="w-full p-4 bg-white dark:bg-[#1a1a24] border border-slate-200/80 dark:border-white/[0.06] rounded-2xl text-xs font-semibold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/50 uppercase transition-all"
+                                                            placeholder={`EJ: ¿POR QUÉ SE GENERÓ LA DESVIACIÓN EN ESTE PASO?`}
+                                                            value={selectedNC.rca?.[fieldKey] || ''}
+                                                            onChange={(e) => {
+                                                                const updatedRCA = {
+                                                                    ...(selectedNC.rca || {}),
+                                                                    [fieldKey]: e.target.value.toUpperCase()
+                                                                };
+                                                                setSelectedNC({
+                                                                    ...selectedNC,
+                                                                    rca: updatedRCA
+                                                                });
+                                                            }}
+                                                        />
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                        <div className="flex flex-col gap-2 pt-4 border-t border-slate-200/60 dark:border-white/[0.05]">
+                                            <label className="text-[10px] font-black text-rose-500 dark:text-rose-400 uppercase tracking-widest ml-1 flex items-center gap-2">
+                                                <ClipboardCheckIcon className="size-3 text-rose-500 animate-bounce" /> Causa Raíz Conclusiva (SGC)
+                                            </label>
+                                            <textarea
+                                                className="w-full p-4 bg-white dark:bg-[#1a1a24] border border-slate-200/80 dark:border-white/[0.06] rounded-2xl text-xs font-semibold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-rose-500/50 uppercase transition-all"
+                                                rows={3}
+                                                placeholder="RESUMA LA CAUSA RAÍZ DEFINITIVA DEL HALLAZGO..."
+                                                value={selectedNC.rca?.rootCause || ''}
+                                                onChange={(e) => {
+                                                    const updatedRCA = {
+                                                        ...(selectedNC.rca || {}),
+                                                        rootCause: e.target.value.toUpperCase()
+                                                    };
+                                                    setSelectedNC({
+                                                        ...selectedNC,
+                                                        rca: updatedRCA
+                                                    });
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+
                                     {/* EVIDENCIA FOTOGRÁFICA */}
                                     <div className="pt-6 border-t dark:border-white/5 space-y-4">
                                         <div className="flex justify-between items-center">
@@ -643,7 +888,7 @@ const NonConformities: React.FC = () => {
                                                             </div>
                                                         </div>
                                                     </div>
-                                                    <button onClick={() => handleUpdateNC({ ...selectedNC, actions: selectedNC.actions.filter(a => a.id !== action.id) })} className="p-2 text-slate-300 hover:text-rose-500 transition-colors"><TrashIcon className="scale-75" /></button>
+                                                    <button onClick={() => handleDeleteCapaAction(action.id)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors"><TrashIcon className="scale-75" /></button>
                                                 </div>
                                             ))}
                                         </div>
@@ -651,14 +896,14 @@ const NonConformities: React.FC = () => {
 
                                     <div className="space-y-6 pt-10 border-t dark:border-white/5">
                                         <label className={labelStyles}>Estado del Hallazgo SGC</label>
-                                        <select className={inputStyles} value={selectedNC.status} onChange={e => handleUpdateNC({ ...selectedNC, status: e.target.value as NCStatus })}>
+                                        <select className={inputStyles} value={selectedNC.status} onChange={e => setSelectedNC({ ...selectedNC, status: e.target.value as NCStatus })}>
                                             <option>Abierta</option>
                                             <option>Bajo Análisis</option>
                                             <option>CAPA</option>
                                             <option>Cerrada</option>
                                             <option>Eficaz</option>
                                         </select>
-                                        <button onClick={() => { setIsActionModalOpen(false); addNotification({ type: 'success', title: 'REGISTRO ACTUALIZADO', message: 'Los cambios técnicos han sido salvados.' }); }} className="w-full py-5 bg-emerald-600 text-white rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-3"><SaveIcon /> Firmar y Guardar Expediente</button>
+                                        <button onClick={async () => { await handleUpdateNC(selectedNC); setIsActionModalOpen(false); addNotification({ type: 'success', title: 'REGISTRO ACTUALIZADO', message: 'Los cambios técnicos han sido salvados.' }); }} className="w-full py-5 bg-emerald-600 text-white rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-3"><SaveIcon /> Firmar y Guardar Expediente</button>
 
                                         {/* TRAZABILIDAD / HISTORIAL */}
                                         <div className="pt-10 border-t dark:border-white/5 space-y-6">

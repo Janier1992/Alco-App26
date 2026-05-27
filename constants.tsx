@@ -88,7 +88,6 @@ export const NAV_ITEMS: NavItem[] = [
         children: [
             { id: 'forms', label: 'Inspecciones en Campo', path: '/quality/forms', icon: ClipboardListIcon },
             { id: 'nc', label: 'No Conformidades y CAPA', path: '/quality/nc', icon: ExclamationTriangleIcon },
-            { id: 'claims', label: 'Gestión de Reclamos', path: '/quality/claims', icon: UserShieldIcon },
         ],
     },
     {
@@ -231,26 +230,41 @@ export const MOCK_NC = [
 export const METROLOGY_MARCAS = ['STANLEY', 'LUFKIN', 'BOSH', 'DEWALT', 'WURTH'];
 export const METROLOGY_MEDIDAS = ['0-150mm', '0-25mm', '12"', '3m', '5m', '8m', 'Humboldt', '30m', '50m'];
 export const METROLOGY_SECCIONES = [
-    'ACCESORIOS', 'ALMACÉN', 'ALISTAMIENTO', 'CALIDAD', 'CNC', 'COMERCIAL',
-    'CORTE DE PERFILERIA', 'COTIZACION', 'DESPACHOS', 'DISEÑO', 'ENSAMBLE',
-    'FELPA / EMPAQUE', 'INSTALACIÓN', 'PINTURA', 'TROQUELADO 1', 'TROQUELADO 2',
-    'TROQUELADO 3', 'VIDRIO CRUDO', 'VIDRIO TEMPLADO', 'ENSAMBLE. BOGOTÁ'
+    'ABASTECIMIENTO',
+    'ACCESORIOS',
+    'ALISTAMIENTO',
+    'ALMACEN',
+    'AMBIENTAL',
+    'CALIDAD',
+    'CNC',
+    'COMERCIAL',
+    'DESPACHOS',
+    'DISEÑO',
+    'ENSAMBLE',
+    'FELPA Y EMPAQUE',
+    'GERENCIAL',
+    'INSTALACION',
+    'MANTENIMIENTO',
+    'PERFILERIA',
+    'POSVENTAS',
+    'PRODUCCION-OFICINAS',
+    'TROQUELADO 1',
+    'TROQUELADO 2',
+    'TROQUELADO 3',
+    'VIDRIO CRUDO',
+    'VIDRIO LAMINADO',
+    'VIDRIO TEMPLADO',
 ];
 export const METROLOGY_ASIGNADOS = ['JANIER MOSQUERA', 'ROBERTO MENDEZ', 'LUIS GOMEZ', 'TAMARA VARGAS'];
 export const METROLOGY_OBSERVACIONES_OPTIONS = [
     'FLEXÓMETRO NUEVO, PRIMERA VEZ',
-    'FLEXÓMETRO NUEVO, PRIMERA VEZ.',
-    'FLEXOMETRO NUEVO, ANTERIOR EXTRAVIADO',
+    'FLEXÓMETRO NUEVO, ANTERIOR EXTRAVIADO',
+    'FLEXÓMETRO NUEVO, ANTERIOR AVERIADO',
+    'FLEXÓMETRO NUEVO, CAMBIO DE MEDIDA',
     'FLEXÓMETRO DE SEGUNDA, PRIMERA VEZ',
     'FLEXÓMETRO DE SEGUNDA, ANTERIOR AVERIADO',
-    'FLEXÓMETRO NUEVO, ANTERIOR AVERIADO',
-    'FLEX. CAMBIO DE 5 A 8 M',
-    'FLEXÓMETRO DE SEGUNDA, ANTERIOR AVERIADO',
-    'FLEXOMETRO NUEVO, ANTERIOR EXTRAVIADO',
-    'DISTANCIÓMETRO NUEVO',
-    'FLEXÓMETRO DE SEGUNDA, ANTERIOR AVERIDO',
-    'FLEXÓMETRO NUEVO, CAMBIO DE MEDIDA',
-    'FLEXOMETRO NUEVO, ANTERIOR AVERIADO'
+    'FLEXÓMETRO CAMBIO DE 5 A 8 METROS',
+    'DISTANCIÓMETRO NUEVO'
 ];
 
 export const PROJECT_USERS = [

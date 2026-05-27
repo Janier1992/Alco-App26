@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
 import { useMessaging } from './MessagingContext';
+import { useConfirmDialog } from './ConfirmDialog';
 import type { Conversation, ChatMessage, User } from '../types';
 
 // ─── Helper Functions ─────────────────────────────────────────
@@ -100,7 +101,8 @@ const ConversationItem: React.FC<{
     isActive: boolean;
     onClick: () => void;
     currentUserId: string;
-}> = ({ conv, isActive, onClick, currentUserId }) => {
+    onDelete: (e: React.MouseEvent) => void;
+}> = ({ conv, isActive, onClick, currentUserId, onDelete }) => {
     const otherParticipant = conv.type === 'direct' ? conv.participants.find(p => p.userId !== currentUserId) : null;
     const isOtherOnline = otherParticipant?.isOnline ?? false;
     const typeIcons: Record<string, string> = { direct: 'fa-user', group: 'fa-users', 'module-linked': 'fa-link' };
@@ -138,7 +140,7 @@ const ConversationItem: React.FC<{
                     )}
                 </div>
                 <div className="flex items-center justify-between gap-2 mt-0.5">
-                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate flex-1">
                         {conv.lastMessage ? (
                             <>
                                 {conv.lastMessage.senderId === currentUserId && <span className="text-slate-400 dark:text-slate-500">Tú: </span>}
@@ -152,11 +154,20 @@ const ConversationItem: React.FC<{
                             <span className="italic text-slate-400">Sin mensajes aún</span>
                         )}
                     </p>
-                    {conv.unreadCount > 0 && (
-                        <span className="flex-shrink-0 min-w-[18px] h-[18px] flex items-center justify-center px-1 bg-gradient-to-r from-indigo-600 to-violet-500 text-white text-[9px] font-black rounded-full shadow-sm">
-                            {conv.unreadCount > 99 ? '99+' : conv.unreadCount}
-                        </span>
-                    )}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {conv.unreadCount > 0 && (
+                            <span className="min-w-[18px] h-[18px] flex items-center justify-center px-1 bg-gradient-to-r from-indigo-600 to-violet-500 text-white text-[9px] font-black rounded-full shadow-sm">
+                                {conv.unreadCount > 99 ? '99+' : conv.unreadCount}
+                            </span>
+                        )}
+                        <button
+                            onClick={onDelete}
+                            className="w-5 h-5 rounded-md hover:bg-rose-500/10 hover:text-rose-500 text-slate-400 dark:text-slate-500 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100"
+                            title="Eliminar conversación"
+                        >
+                            <i className="far fa-trash-alt text-[10px]"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
         </button>
@@ -422,8 +433,26 @@ const Messaging: React.FC = () => {
         searchTerm, filterType, isLoading, isLoadingMessages,
         setActiveConversation, sendMessage, toggleSound,
         setSearchTerm, setFilterType, createConversation, currentUserId,
-        directoryUsers, uploadAttachment
+        directoryUsers, uploadAttachment, deleteConversation
     } = useMessaging();
+
+    const { confirm } = useConfirmDialog();
+
+    const handleDeleteConversation = useCallback(async (conversationId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const ok = await confirm({
+            title: '¿Eliminar Conversación?',
+            message: 'Esta acción es permanente e irreversible. Se borrarán todos los mensajes y participantes vinculados a este chat.',
+            confirmLabel: 'Eliminar',
+            cancelLabel: 'Cancelar',
+            variant: 'danger',
+            icon: 'fa-trash-alt'
+        });
+        if (ok) {
+            await deleteConversation(conversationId);
+        }
+    }, [confirm, deleteConversation]);
 
     const [inputText, setInputText] = useState('');
     const [showEmojis, setShowEmojis] = useState(false);
@@ -649,6 +678,7 @@ const Messaging: React.FC = () => {
                                     isActive={conv.id === activeConversationId}
                                     onClick={() => setActiveConversation(conv.id)}
                                     currentUserId={currentUserId}
+                                    onDelete={(e) => handleDeleteConversation(conv.id, e)}
                                 />
                             ))
                         )
@@ -732,6 +762,13 @@ const Messaging: React.FC = () => {
                                     title={soundEnabled ? 'Silenciar' : 'Activar sonido'}
                                 >
                                     <i className={`fas ${soundEnabled ? 'fa-volume-up' : 'fa-volume-mute'} text-xs`}></i>
+                                </button>
+                                <button
+                                    onClick={(e) => handleDeleteConversation(activeConv.id, e)}
+                                    className="w-8 h-8 rounded-xl bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-500 transition-all border border-rose-500/20 hover:border-transparent flex items-center justify-center"
+                                    title="Eliminar conversación"
+                                >
+                                    <i className="far fa-trash-alt text-xs"></i>
                                 </button>
                                 {activeConv.type === 'group' && (
                                     <div className="hidden sm:flex items-center -space-x-1.5 ml-2">

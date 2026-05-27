@@ -61,7 +61,6 @@ const LOCATION_MAP: Record<string, string> = {
     'forms': 'Estás en Formularios de Inspección. Ayuda a verificar tolerancias y criterios de aceptación.',
     'audits': 'Estás en Auditorías ISO 9001. Sugiere preguntas de auditoría y evalúa evidencias.',
     'projects': 'Estás en Gestión de Proyectos. Analiza cronogramas y riesgos.',
-    'claims': 'Estás en Reclamos de Calidad. Ayuda a clasificar y redactar respuestas a clientes.',
     'metrology': 'Estás en Metrología. Asesora sobre calibración, trazabilidad y control de equipos.',
     'maintenance': 'Estás en Mantenimiento. Ayuda a diagnosticar fallas y planificar mantenimiento preventivo.',
 };
