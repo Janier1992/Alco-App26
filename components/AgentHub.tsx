@@ -691,64 +691,64 @@ const AgentHub: React.FC = () => {
     const activeKBCount = kbDocs.filter(d => d.active).length;
 
     return (
-        <div className="fixed bottom-8 right-8 z-[1000] flex flex-col items-end gap-4">
+        <div className="fixed bottom-4 right-4 sm:bottom-8 sm:right-8 z-[1000] flex flex-col items-end gap-4 max-w-[calc(100vw-2rem)] sm:max-w-none">
             {isAgentOpen && (
-                <div className="bg-white dark:bg-[#111827] w-[420px] h-[640px] rounded-3xl shadow-2xl border border-slate-200/80 dark:border-white/[0.06] flex flex-col overflow-hidden animate-fade-in-up origin-bottom-right backdrop-blur-xl">
+                <div className="bg-white dark:bg-[#111827] w-[calc(100vw-2rem)] sm:w-[420px] h-[calc(100vh-2rem)] h-[calc(100dvh-2rem)] sm:h-[640px] max-h-[640px] rounded-3xl shadow-2xl border border-slate-200/80 dark:border-white/[0.06] flex flex-col overflow-hidden animate-fade-in-up origin-bottom-right backdrop-blur-xl">
                     {/* HEADER */}
-                    <div className="p-4 bg-gradient-to-r from-indigo-600 to-violet-600 space-y-3 flex-shrink-0">
+                    <div className="p-3 sm:p-4 bg-gradient-to-r from-indigo-600 to-violet-600 space-y-2 sm:space-y-3 flex-shrink-0">
                         <div className="flex justify-between items-center text-white">
-                            <div className="flex items-center gap-3">
-                                <div className="bg-white/20 p-2 rounded-xl backdrop-blur-md text-yellow-300">
-                                    <SparklesIcon />
+                            <div className="flex items-center gap-2 sm:gap-3">
+                                <div className="bg-white/20 p-1.5 sm:p-2 rounded-xl backdrop-blur-md text-yellow-300">
+                                    <SparklesIcon className="w-4 h-4" />
                                 </div>
                                 <div>
-                                    <h3 className="font-black text-sm uppercase tracking-wide">Agente Calidad</h3>
-                                    <p className="text-[10px] text-indigo-100 opacity-90 font-medium flex items-center gap-1.5">
+                                    <h3 className="font-black text-xs sm:text-sm uppercase tracking-wide">Agente Calidad</h3>
+                                    <p className="text-[9px] sm:text-[10px] text-indigo-100 opacity-90 font-medium flex items-center gap-1 sm:gap-1.5">
                                         {voiceStatus === 'connected' ? '🎙️ Voz Activa' : '🟢 Online'}
                                         {activeKBCount > 0 && (
-                                            <span className="bg-emerald-500/30 border border-emerald-400/40 px-1.5 py-0.5 rounded-md text-emerald-200 text-[9px] font-black">
-                                                📄 {activeKBCount} doc{activeKBCount > 1 ? 's' : ''} activo{activeKBCount > 1 ? 's' : ''}
+                                            <span className="bg-emerald-500/30 border border-emerald-400/40 px-1 py-0.5 rounded-md text-emerald-200 text-[8px] sm:text-[9px] font-black">
+                                                📄 {activeKBCount} doc{activeKBCount > 1 ? 's' : ''} active
                                             </span>
                                         )}
                                     </p>
                                 </div>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex gap-1.5 sm:gap-2">
                                 {/* KB Toggle */}
                                 <button
                                     onClick={() => setShowKBPanel(!showKBPanel)}
-                                    className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-all border ${showKBPanel ? 'bg-emerald-500/20 border-emerald-400 text-emerald-100' : 'bg-white/10 border-white/20 text-white/60 hover:bg-white/20'}`}
+                                    className={`text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-lg transition-all border ${showKBPanel ? 'bg-emerald-500/20 border-emerald-400 text-emerald-100' : 'bg-white/10 border-white/20 text-white/60 hover:bg-white/20'}`}
                                     title="Base de Conocimiento"
                                 >
-                                    <BookIcon />
+                                    <BookIcon className="w-4 h-4" />
                                 </button>
                                 {/* Web Search */}
                                 <button
                                     onClick={() => setUseGoogleSearch(!useGoogleSearch)}
-                                    className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-all border ${useGoogleSearch ? 'bg-emerald-500/20 border-emerald-400 text-emerald-100' : 'bg-white/10 border-white/20 text-white/60'}`}
+                                    className={`text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-lg transition-all border ${useGoogleSearch ? 'bg-emerald-500/20 border-emerald-400 text-emerald-100' : 'bg-white/10 border-white/20 text-white/60'}`}
                                     title="Búsqueda Web"
                                 >
-                                    <GlobeIcon />
+                                    <GlobeIcon className="w-4 h-4" />
                                 </button>
                                 {/* Voice */}
                                 <button
                                     onClick={() => setMode(mode === 'text' ? 'voice' : 'text')}
-                                    className={`p-2 rounded-lg transition-all ${mode === 'voice' ? 'bg-white text-indigo-600 shadow-lg' : 'text-white/70 hover:bg-white/10'}`}
+                                    className={`p-1.5 sm:p-2 rounded-lg transition-all ${mode === 'voice' ? 'bg-white text-indigo-600 shadow-lg' : 'text-white/70 hover:bg-white/10'}`}
                                 >
-                                    <MicrophoneIcon />
+                                    <MicrophoneIcon className="w-4 h-4" />
                                 </button>
-                                <button onClick={() => toggleAgent(false)} className="text-white/70 hover:text-white p-2">
-                                    <XCircleIcon />
+                                <button onClick={() => toggleAgent(false)} className="text-white/70 hover:text-white p-1.5 sm:p-2">
+                                    <XCircleIcon className="w-4 h-4" />
                                 </button>
                             </div>
                         </div>
                         {/* AGENT PERSONAS */}
-                        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                        <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 no-scrollbar">
                             {(['Global', 'Ops', 'QA', 'Project', 'Supply'] as AgentPersona[]).map(p => (
                                 <button
                                     key={p}
                                     onClick={() => setActiveAgent(p)}
-                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all whitespace-nowrap ${activeAgent === p ? 'bg-white text-indigo-600 shadow-md' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                                    className={`px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg text-[9px] sm:text-[10px] font-bold uppercase transition-all whitespace-nowrap ${activeAgent === p ? 'bg-white text-indigo-600 shadow-md' : 'bg-white/10 text-white hover:bg-white/20'}`}
                                 >
                                     {p === 'Global' ? '🧠 General' : p === 'Ops' ? '🏭 Ops' : p === 'QA' ? '🛡️ Calidad' : p === 'Project' ? '📅 Proyectos' : '📦 Compras'}
                                 </button>
@@ -775,11 +775,11 @@ const AgentHub: React.FC = () => {
                                 <span className='text-xl'>📄</span>
                                 <div className="flex flex-col overflow-hidden">
                                     <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">Documento Activo (Biblioteca)</span>
-                                    <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 truncate max-w-[220px]">{activeDocument.name}</span>
+                                    <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 truncate max-w-[150px] xs:max-w-[220px] sm:max-w-xs">{activeDocument.name}</span>
                                 </div>
                             </div>
                             <button onClick={() => setActiveDocument(null)} className="text-indigo-400 hover:text-indigo-600 p-1 flex-shrink-0">
-                                <XCircleIcon />
+                                <XCircleIcon className="w-4 h-4" />
                             </button>
                         </div>
                     )}
@@ -819,13 +819,13 @@ const AgentHub: React.FC = () => {
                                 {groundingSources.length > 0 && (
                                     <div className="p-3 bg-indigo-50 dark:bg-indigo-900/10 rounded-xl border border-indigo-100 dark:border-indigo-500/20">
                                         <p className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase mb-2 flex items-center gap-2">
-                                            <GlobeIcon /> Fuentes Verificadas
+                                            <GlobeIcon className="w-4 h-4" /> Fuentes Verificadas
                                         </p>
                                         <div className="flex flex-wrap gap-2">
                                             {groundingSources.map((source, idx) => (
                                                 <a key={idx} href={source.uri} target="_blank" rel="noopener noreferrer"
                                                     className="flex items-center gap-1.5 px-2 py-1 bg-white dark:bg-black/20 rounded-lg text-[10px] font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-500 transition-colors">
-                                                    <LinkIcon /> {source.title.substring(0, 25)}...
+                                                    <LinkIcon className="w-4 h-4" /> {source.title.substring(0, 25)}...
                                                 </a>
                                             ))}
                                         </div>
@@ -838,7 +838,7 @@ const AgentHub: React.FC = () => {
                                     <div className={`absolute inset-0 bg-indigo-500 rounded-full opacity-20 blur-xl transition-all duration-1000 ${isSpeaking ? 'scale-150' : 'scale-100'}`} />
                                     <div className={`relative w-24 h-24 rounded-full border-4 flex items-center justify-center transition-all duration-300 ${isSpeaking ? 'border-indigo-500 bg-indigo-50 dark:bg-white/10 scale-110' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.04]'}`}>
                                         <div className={`text-3xl ${isSpeaking ? 'text-indigo-500 animate-pulse' : 'text-slate-300 dark:text-slate-600'}`}>
-                                            <MicrophoneIcon />
+                                            <MicrophoneIcon className="w-5 h-5" />
                                         </div>
                                     </div>
                                 </div>
@@ -860,18 +860,18 @@ const AgentHub: React.FC = () => {
                         <div className="p-3 bg-white dark:bg-[#111827] border-t border-slate-100 dark:border-white/[0.04] flex-shrink-0">
                             {attachedImage && (
                                 <div className="mb-2 flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-700 dark:text-indigo-300">
-                                    <CameraIcon /> Imagen adjunta
-                                    <button onClick={() => setAttachedImage(null)} className="ml-auto hover:text-rose-500"><XCircleIcon /></button>
+                                    <CameraIcon className="w-4 h-4" /> Imagen adjunta
+                                    <button onClick={() => setAttachedImage(null)} className="ml-auto hover:text-rose-500"><XCircleIcon className="w-4 h-4" /></button>
                                 </div>
                             )}
                             <div className="flex gap-2 items-center">
                                 <button onClick={() => fileInputRef.current?.click()} className="p-2.5 text-slate-400 hover:text-indigo-500 bg-slate-50 dark:bg-white/[0.04] rounded-xl transition-colors flex-shrink-0">
-                                    <CameraIcon />
+                                    <CameraIcon className="w-4 h-4" />
                                 </button>
                                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
                                 <input
                                     className="flex-grow bg-slate-50 dark:bg-white/[0.04] border border-transparent focus:border-indigo-500/40 focus:ring-0 rounded-xl px-4 py-2.5 text-sm transition-all dark:text-white placeholder:text-slate-400 outline-none"
-                                    placeholder={activeKBCount > 0 ? `Consulta con ${activeKBCount} doc(s) activo(s)...` : "Escribe tu consulta..."}
+                                    placeholder={activeKBCount > 0 ? `Consulta con ${activeKBCount} doc(s)...` : "Escribe tu consulta..."}
                                     value={input}
                                     onChange={e => setInput(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
@@ -881,7 +881,7 @@ const AgentHub: React.FC = () => {
                                     disabled={isProcessing || (!input && !attachedImage)}
                                     className="p-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-xl disabled:opacity-50 hover:shadow-indigo-500/30 shadow-lg shadow-indigo-500/20 transition-all active:scale-95 flex-shrink-0"
                                 >
-                                    <ChevronRightIcon />
+                                    <ChevronRightIcon className="w-4 h-4" />
                                 </button>
                             </div>
                         </div>
@@ -894,8 +894,8 @@ const AgentHub: React.FC = () => {
                 onClick={() => toggleAgent()}
                 className={`w-14 h-14 rounded-full flex items-center justify-center text-xl shadow-2xl transition-all duration-300 z-50
                     ${isAgentOpen
-                        ? 'bg-slate-800 text-white rotate-90 scale-90'
-                        : 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:scale-110 hover:shadow-indigo-500/50 animate-bounce-subtle'
+                        ? 'bg-slate-800 text-white rotate-90 scale-90 hidden sm:flex'
+                        : 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:scale-110 hover:shadow-indigo-500/50 animate-bounce-subtle flex'
                     }`}
             >
                 {isAgentOpen ? <XCircleIcon /> : <RobotIcon />}
