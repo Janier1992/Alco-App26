@@ -1,16 +1,17 @@
 /// <reference types="vite/client" />
 import { createClient } from '@insforge/sdk';
 
-const baseUrl = import.meta.env.VITE_INSFORGE_URL;
-const anonKey = import.meta.env.VITE_INSFORGE_ANON_KEY;
+const rawBaseUrl = import.meta.env.VITE_INSFORGE_URL || '';
+const baseUrl = rawBaseUrl.replace(/\/+$/, '');
+const anonKey = import.meta.env.VITE_INSFORGE_ANON_KEY || '';
 
 if (!baseUrl || !anonKey) {
     console.warn('InsForge credentials missing. Check .env.local');
 }
 
 export const insforge = createClient({
-    baseUrl: baseUrl || '',
-    anonKey: anonKey || ''
+    baseUrl: baseUrl,
+    anonKey: anonKey
 });
 
 // Proxy handler to maintain compatibility with existing @supabase/supabase-js code
