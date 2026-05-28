@@ -200,7 +200,7 @@ const MaintenanceTaskModal: React.FC<{ isOpen: boolean; onClose: () => void; tas
 
     const inputStyles = "w-full p-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-50 rounded-md focus:ring-2 focus:ring-sky-500 outline-none transition-colors";
     const labelStyles = "font-medium text-slate-600 dark:text-slate-400 block mb-1 text-sm";
-    const availableUsers = PROJECT_USERS.filter(u => !editedTask.assignedUsers.some(au => (au as any).user_id === u.id || au.id === u.id));
+    const availableUsers = PROJECT_USERS.filter(u => !editedTask.assignedUsers.some((au: any) => au.user_id === u.user_id || au.id === u.user_id));
     const availableLabels = AVAILABLE_LABELS.filter(l => !editedTask.labels.some(sl => sl.id === l.id));
 
     return (

@@ -71,12 +71,12 @@ export type NCSeverity = 'Menor' | 'Mayor' | 'Crítica';
 export type NCStatus = 'Abierta' | 'Bajo Análisis' | 'CAPA' | 'Cerrada' | 'Eficaz';
 
 export interface FiveWhys {
-    why1: string;
-    why2: string;
-    why3: string;
-    why4: string;
-    why5: string;
-    rootCause: string;
+    why1?: string;
+    why2?: string;
+    why3?: string;
+    why4?: string;
+    why5?: string;
+    rootCause?: string;
     aiSuggestedRootCause?: string;
     evidence_urls?: string[];
 }
@@ -92,6 +92,7 @@ export interface CAPAAction {
 
 export interface NonConformity {
     id: string;
+    db_id?: string;
     title: string;
     process: string;
     project: string;
@@ -353,7 +354,7 @@ export interface LineRiskProfile {
 }
 
 // --- Mensajería Centralizada (User-Centric y Tiempo Real) ---
-export type ConversationType = 'direct' | 'group';
+export type ConversationType = 'direct' | 'group' | 'module-linked';
 export type MessageContentType = 'text' | 'file' | 'image' | 'system';
 export type MessageReadStatus = 'sent' | 'delivered' | 'read';
 
@@ -395,13 +396,14 @@ export interface ChatMessage {
     fileName?: string;
     fileUrl?: string;
     fileSize?: number;
+    readBy?: string[];
 }
 
 export interface Conversation {
     id: string;
     type: ConversationType;
-    organizationId: string;
-    createdBy: string;
+    organizationId?: string;
+    createdBy?: string;
     title?: string;
     avatar?: string;
     participants: ChatParticipant[];
@@ -410,7 +412,8 @@ export interface Conversation {
     linkedModule?: 'nc' | 'audit' | 'document' | 'project';
     linkedId?: string;
     createdAt: string;
-    updatedAt: string;
+    updatedAt?: string;
+    moduleRef?: any;
 }
 
 // --- Sistema Unificado de Notificaciones ---

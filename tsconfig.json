@@ -28,5 +28,16 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "esModuleInterop": true
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "check-db.ts",
+    "find-stable-models.ts",
+    "index-knowledge.ts",
+    "list-models.ts",
+    "test-gemini-models.ts",
+    "test-gemini.ts",
+    "test-quota.ts"
+  ]
 }

@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../insforgeClient';
 import { useMessaging } from '../components/MessagingContext';
 
 export const useMessagingSystem = () => {
