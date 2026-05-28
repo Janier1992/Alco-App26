@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import {
     RobotIcon, MicrophoneIcon, CameraIcon, ChevronRightIcon,
-    GlobeIcon, LinkIcon, SparklesIcon, XCircleIcon, BookIcon
+    GlobeIcon, LinkIcon, SparklesIcon, XCircleIcon, BookIcon, CogIcon
 } from '../constants';
 import type { AgentMessage, AgentPersona } from '../types';
 import ReactMarkdown from 'react-markdown';
@@ -16,7 +16,12 @@ import {
 } from '../utils/knowledgeBaseService';
 import { insforge } from '../insforgeClient';
 
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GOOGLE_GENAI_KEY;
+const getApiKey = (): string => {
+    return localStorage.getItem('ALCO_GEMINI_API_KEY') || 
+           import.meta.env.VITE_GEMINI_API_KEY || 
+           import.meta.env.VITE_GOOGLE_GENAI_KEY || 
+           '';
+};
 const BASE_PATH = import.meta.env.BASE_URL || '/Alco-App26/';
 
 // --- Audio Utils ---
@@ -190,6 +195,8 @@ const AgentHub: React.FC = () => {
     const [useGoogleSearch, setUseGoogleSearch] = useState(true);
     const [activeAgent, setActiveAgent] = useState<AgentPersona>('Global');
     const [showKBPanel, setShowKBPanel] = useState(false);
+    const [showSettings, setShowSettings] = useState(false);
+    const [tempApiKey, setTempApiKey] = useState(localStorage.getItem('ALCO_GEMINI_API_KEY') || '');
     const location = useLocation();
 
     // Knowledge Base state
@@ -265,8 +272,9 @@ const AgentHub: React.FC = () => {
         addNotification({ type: 'info', title: '🔄 Sincronizando RAG', message: 'Iniciando procesamiento de manuales...' });
         
         try {
-            if (!API_KEY) throw new Error("API_KEY_MISSING");
-            const genAI = new GoogleGenerativeAI(API_KEY);
+            const currentApiKey = getApiKey();
+            if (!currentApiKey) throw new Error("API_KEY_MISSING");
+            const genAI = new GoogleGenerativeAI(currentApiKey);
             const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
             const embeddingModel = genAI.getGenerativeModel({ model: "gemini-embedding-001" });
 
@@ -426,8 +434,9 @@ const AgentHub: React.FC = () => {
         setIsProcessing(true);
 
         try {
-            if (!API_KEY) throw new Error("API_KEY_MISSING");
-            const genAI = new GoogleGenerativeAI(API_KEY);
+            const currentApiKey = getApiKey();
+            if (!currentApiKey) throw new Error("API_KEY_MISSING");
+            const genAI = new GoogleGenerativeAI(currentApiKey);
 
             // 1. Obtener contexto de manuales vía RAG (Búsqueda inteligente)
             let contextParts: any[] = [];
@@ -591,7 +600,8 @@ const AgentHub: React.FC = () => {
     const startVoiceSession = async () => {
         try {
             setVoiceStatus('connecting');
-            if (!API_KEY) throw new Error("API Key no configurada");
+            const currentApiKey = getApiKey();
+            if (!currentApiKey) throw new Error("API Key no configurada");
 
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             streamRef.current = stream;
@@ -604,7 +614,7 @@ const AgentHub: React.FC = () => {
             outputNode.current.connect(ctxOut.destination);
 
             const host = "generativelanguage.googleapis.com";
-            const url = `wss://${host}/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${API_KEY}`;
+            const url = `wss://${host}/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${currentApiKey}`;
             const ws = new WebSocket(url);
             wsRef.current = ws;
 
@@ -734,8 +744,17 @@ const AgentHub: React.FC = () => {
                                 <button
                                     onClick={() => setMode(mode === 'text' ? 'voice' : 'text')}
                                     className={`p-1.5 sm:p-2 rounded-lg transition-all ${mode === 'voice' ? 'bg-white text-indigo-600 shadow-lg' : 'text-white/70 hover:bg-white/10'}`}
+                                    title="Modo de Voz"
                                 >
                                     <MicrophoneIcon className="w-4 h-4" />
+                                </button>
+                                {/* API Key Settings */}
+                                <button
+                                    onClick={() => setShowSettings(!showSettings)}
+                                    className={`p-1.5 sm:p-2 rounded-lg transition-all ${showSettings ? 'bg-amber-500/20 border-amber-400 text-amber-100 border' : 'text-white/70 hover:bg-white/10'}`}
+                                    title="Configurar API Key"
+                                >
+                                    <CogIcon className="w-4 h-4" />
                                 </button>
                                 <button onClick={() => toggleAgent(false)} className="text-white/70 hover:text-white p-1.5 sm:p-2">
                                     <XCircleIcon className="w-4 h-4" />
@@ -755,6 +774,39 @@ const AgentHub: React.FC = () => {
                             ))}
                         </div>
                     </div>
+
+                    {/* API KEY SETTINGS DRAWER */}
+                    {showSettings && (
+                        <div className="px-4 py-3 bg-indigo-950/60 border-b border-indigo-800/30 flex flex-col gap-2 animate-fade-in text-white flex-shrink-0">
+                            <div className="flex justify-between items-center">
+                                <span className="text-[10px] text-indigo-300 font-black uppercase tracking-widest flex items-center gap-1.5">
+                                    <CogIcon className="w-3.5 h-3.5 text-amber-400" /> Configuración API Key
+                                </span>
+                            </div>
+                            <p className="text-[9px] text-slate-300 leading-normal">
+                                Ingresa tu Gemini API Key personal de Google AI Studio. Se guardará de forma segura en tu navegador y evitará bloqueos de seguridad de GitHub.
+                            </p>
+                            <div className="flex gap-2 items-center mt-1">
+                                <input 
+                                    type="password"
+                                    className="flex-grow bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-white/20 focus:border-indigo-400 outline-none"
+                                    placeholder={getApiKey() ? "••••••••••••••••••••••••••••••••••••" : "AIzaSy..."}
+                                    value={tempApiKey}
+                                    onChange={e => setTempApiKey(e.target.value)}
+                                />
+                                <button 
+                                    onClick={() => {
+                                        localStorage.setItem('ALCO_GEMINI_API_KEY', tempApiKey.trim());
+                                        addNotification({ type: 'success', title: 'Configuración Guardada', message: 'API Key de Gemini configurada con éxito.' });
+                                        setShowSettings(false);
+                                    }}
+                                    className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-bold text-[10px] px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
+                                >
+                                    Guardar
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     {/* KNOWLEDGE BASE PANEL */}
                     {showKBPanel && (
