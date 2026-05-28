@@ -3,10 +3,15 @@ import { createClient } from "@insforge/sdk";
 import fs from "fs";
 import path from "path";
 
-// Configuración desde .env (hardcoded para el script de ejecución directa)
-const API_KEY = "AIzaSyA5QqOGhud-GOyCdokpneK3wo3F-e7kP88";
-const INSFORGE_URL = "https://5czjn84m.us-east.insforge.app";
-const INSFORGE_KEY = "ik_1993a732585fd3d931ef489e85fa4591";
+// Configuración desde .env (cargada mediante variables de entorno)
+const API_KEY = process.env.VITE_GEMINI_API_KEY || "";
+const INSFORGE_URL = process.env.VITE_INSFORGE_URL || "https://5czjn84m.us-east.insforge.app";
+const INSFORGE_KEY = process.env.VITE_INSFORGE_ANON_KEY || "ik_1993a732585fd3d931ef489e85fa4591";
+
+if (!API_KEY) {
+    console.error("❌ ERROR: VITE_GEMINI_API_KEY environment variable is required.");
+    process.exit(1);
+}
 
 const genAI = new GoogleGenerativeAI(API_KEY);
 const insforge = createClient({ baseUrl: INSFORGE_URL, anonKey: INSFORGE_KEY });

@@ -1,8 +1,12 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const API_KEY = "AIzaSyA5QqOGhud-GOyCdokpneK3wo3F-e7kP88";
+const API_KEY = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "";
 
 async function findModels() {
+    if (!API_KEY) {
+        console.error("❌ ERROR: No API Key found. Set VITE_GEMINI_API_KEY environment variable.");
+        return;
+    }
     try {
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`);
         const data = await response.json();

@@ -693,7 +693,7 @@ const AgentHub: React.FC = () => {
     return (
         <div className="fixed bottom-4 right-4 sm:bottom-8 sm:right-8 z-[1000] flex flex-col items-end gap-4 max-w-[calc(100vw-2rem)] sm:max-w-none">
             {isAgentOpen && (
-                <div className="bg-white dark:bg-[#111827] w-[calc(100vw-2rem)] sm:w-[420px] h-[calc(100vh-2rem)] h-[calc(100dvh-2rem)] sm:h-[640px] max-h-[640px] rounded-3xl shadow-2xl border border-slate-200/80 dark:border-white/[0.06] flex flex-col overflow-hidden animate-fade-in-up origin-bottom-right backdrop-blur-xl">
+                <div className="bg-white dark:bg-[#111827] w-[calc(100vw-2rem)] sm:w-[420px] h-[calc(100vh-2rem)] h-[calc(100dvh-2rem)] sm:h-[calc(100vh-4rem)] sm:h-[calc(100dvh-4rem)] sm:max-h-[640px] sm:min-h-[400px] rounded-3xl shadow-2xl border border-slate-200/80 dark:border-white/[0.06] flex flex-col overflow-hidden animate-fade-in-up origin-bottom-right backdrop-blur-xl">
                     {/* HEADER */}
                     <div className="p-3 sm:p-4 bg-gradient-to-r from-indigo-600 to-violet-600 space-y-2 sm:space-y-3 flex-shrink-0">
                         <div className="flex justify-between items-center text-white">
@@ -894,11 +894,11 @@ const AgentHub: React.FC = () => {
                 onClick={() => toggleAgent()}
                 className={`w-14 h-14 rounded-full flex items-center justify-center text-xl shadow-2xl transition-all duration-300 z-50
                     ${isAgentOpen
-                        ? 'bg-slate-800 text-white rotate-90 scale-90 hidden sm:flex'
+                        ? 'hidden'
                         : 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:scale-110 hover:shadow-indigo-500/50 animate-bounce-subtle flex'
                     }`}
             >
-                {isAgentOpen ? <XCircleIcon /> : <RobotIcon />}
+                {isAgentOpen ? <XCircleIcon className="w-5 h-5" /> : <RobotIcon />}
             </button>
         </div>
     );
