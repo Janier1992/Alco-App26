@@ -501,7 +501,7 @@ export default function MetrologyReplacement() {
                                             <button onClick={() => setViewingRecord(record)} className="p-2.5 bg-slate-50 text-slate-500 rounded-xl hover:bg-slate-500 hover:text-white transition-all shadow-sm mr-2" title="Ver detalle">
                                                 <i className="fas fa-eye text-xs"></i>
                                             </button>
-                                            <button onClick={() => exportReplacementToPDF(record)} className="p-2.5 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all shadow-sm mr-2" title="Exportar PDF">
+                                            <button onClick={async () => await exportReplacementToPDF(record)} className="p-2.5 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all shadow-sm mr-2" title="Exportar PDF">
                                                 <i className="fas fa-file-pdf text-xs"></i>
                                             </button>
                                             <button onClick={() => handleEdit(record)} className="text-sky-400 hover:text-sky-500 transition-colors mr-3">

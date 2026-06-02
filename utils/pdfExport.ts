@@ -10,27 +10,46 @@ const MUTED: [number, number, number] = [100, 116, 139];        // slate-500
 const LIGHT_BG: [number, number, number] = [241, 245, 249];     // slate-100
 const SUCCESS: [number, number, number] = [5, 150, 105];        // emerald-600
 
-function addHeader(doc: jsPDF, title: string, subtitle: string, docId: string) {
+function addHeader(doc: jsPDF, title: string, subtitle: string, docId: string, logoImg?: HTMLImageElement | null, consecutiveNumber?: number) {
     const pageW = doc.internal.pageSize.getWidth();
 
     // Top bar
     doc.setFillColor(...BRAND_COLOR);
     doc.rect(0, 0, pageW, 22, 'F');
 
-    // Company name
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('ALCO S.A.S', 14, 10);
+    // Company logo or name
+    if (logoImg) {
+        try {
+            const aspect = logoImg.width / logoImg.height;
+            const logoH = 14;
+            const logoW = logoH * aspect;
+            doc.addImage(logoImg, 'PNG', 14, 4, logoW, logoH);
+        } catch (e) {
+            console.error("Error drawing logo:", e);
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.text('ALCO S.A.S', 14, 14);
+        }
+    } else {
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('ALCO S.A.S', 14, 14);
+    }
 
     // Subtitle right-aligned
     doc.setFontSize(7);
     doc.setFont('helvetica', 'normal');
+    doc.setTextColor(255, 255, 255);
     doc.text('Sistema de Gestión de Calidad · SGC', pageW - 14, 10, { align: 'right' });
 
-    // Doc ID right
+    // Doc ID right (with consecutive number if provided)
     doc.setFontSize(7);
-    doc.text(`ID: ${docId}`, pageW - 14, 16, { align: 'right' });
+    const displayId = consecutiveNumber !== undefined 
+        ? `ID: No. ${consecutiveNumber} - ${docId}` 
+        : `ID: ${docId}`;
+    doc.text(displayId, pageW - 14, 16, { align: 'right' });
 
     // Title block
     doc.setTextColor(...DARK);
@@ -143,22 +162,37 @@ function addFooter(doc: jsPDF) {
 
 // ─── Exportar Acta de Entrega ────────────────────────────────────────────────
 
-export function exportMetrologyToPDF(record: MetrologyRecord) {
+export async function exportMetrologyToPDF(record: MetrologyRecord, consecutiveNumber?: number) {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageW = doc.internal.pageSize.getWidth();
 
-    addHeader(doc, 'ACTA DE ENTREGA DE EQUIPOS', 'Gestión de Herramientas y Activos · Transversal SGC', record.id);
+    // Load logo image
+    let logoImg: HTMLImageElement | null = null;
+    try {
+        const BASE = import.meta.env.BASE_URL || '/Alco-App26/';
+        const logoUrl = `${BASE.replace(/\/$/, '')}/logo_alco.png`;
+        logoImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error('Failed to load logo'));
+            img.src = logoUrl;
+        });
+    } catch (e) {
+        console.warn("Could not load Alco logo for PDF header, using text fallback:", e);
+    }
+
+    addHeader(doc, 'ACTA DE ENTREGA DE EQUIPOS', 'Gestión de Herramientas y Activos · Transversal SGC', record.id, logoImg, consecutiveNumber);
 
     let y = 52;
 
     // ── Datos Generales
     y = addSectionLabel(doc, '1. Datos Generales', y);
     y = addInfoGrid(doc, [
-        { label: 'ID Acta', value: record.id },
         { label: 'Fecha', value: record.fecha },
         { label: 'Área', value: record.area },
         { label: 'Sede', value: record.sede },
-    ], y, 4);
+    ], y, 3);
 
     y += 4;
 
@@ -221,13 +255,30 @@ export function exportMetrologyToPDF(record: MetrologyRecord) {
     doc.save(`Acta_Entrega_${record.id}_${record.receptorNombre.replace(/\s+/g, '_')}.pdf`);
 }
 
+
 // ─── Exportar Baja / Reposición ──────────────────────────────────────────────
 
-export function exportReplacementToPDF(record: MetrologyReplacementRecord) {
+export async function exportReplacementToPDF(record: MetrologyReplacementRecord) {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageW = doc.internal.pageSize.getWidth();
 
-    addHeader(doc, 'ACTA DE BAJA Y REPOSICIÓN DE EQUIPO', 'Gestión del Ciclo de Vida de Activos · SGC', record.id);
+    // Load logo image
+    let logoImg: HTMLImageElement | null = null;
+    try {
+        const BASE = import.meta.env.BASE_URL || '/Alco-App26/';
+        const logoUrl = `${BASE.replace(/\/$/, '')}/logo_alco.png`;
+        logoImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error('Failed to load logo'));
+            img.src = logoUrl;
+        });
+    } catch (e) {
+        console.warn("Could not load Alco logo for PDF header, using text fallback:", e);
+    }
+
+    addHeader(doc, 'ACTA DE BAJA Y REPOSICIÓN DE EQUIPO', 'Gestión del Ciclo de Vida de Activos · SGC', record.id, logoImg);
 
     let y = 52;
 

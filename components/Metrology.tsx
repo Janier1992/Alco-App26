@@ -516,7 +516,11 @@ const Metrology: React.FC = () => {
                                     </td>
                                     <td className="px-8 py-6 text-right">
                                         <button onClick={() => setViewingRecord(r)} className="p-3 bg-slate-50 text-slate-500 rounded-xl hover:bg-slate-500 hover:text-white transition-all shadow-sm mr-2" title="Ver detalle"><i className="fas fa-eye text-xs"></i></button>
-                                        <button onClick={() => exportMetrologyToPDF(r)} className="p-3 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all shadow-sm mr-2" title="Exportar PDF"><i className="fas fa-file-pdf text-xs"></i></button>
+                                        <button onClick={async () => {
+                                            const absoluteIndex = records.findIndex(rec => rec.id === r.id);
+                                            const consecutive = absoluteIndex !== -1 ? records.length - absoluteIndex : undefined;
+                                            await exportMetrologyToPDF(r, consecutive);
+                                        }} className="p-3 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all shadow-sm mr-2" title="Exportar PDF"><i className="fas fa-file-pdf text-xs"></i></button>
                                         <button onClick={() => handleEdit(r)} className="p-3 bg-sky-50 text-sky-500 rounded-xl hover:bg-sky-500 hover:text-white transition-all shadow-sm mr-2"><EditIcon /></button>
                                         <button onClick={() => handleDelete(r.id)} className="p-3 bg-slate-100 text-slate-400 rounded-xl hover:bg-slate-400 hover:text-white transition-all shadow-sm"><TrashIcon /></button>
                                     </td>
