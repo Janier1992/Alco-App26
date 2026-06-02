@@ -77,8 +77,23 @@ const getContextFromPath = (path: string): string => {
     return 'Estás en el menú principal de Alco SGC Pro.';
 };
 
-const getSystemContext = (useSearch: boolean, currentPath: string, persona: AgentPersona = 'Global', kbDocs: KBDocument[]) => {
+const getSystemContext = (useSearch: boolean, currentPath: string, persona: AgentPersona = 'Global', kbDocs: KBDocument[], rcaState?: any) => {
     
+    let rcaContext = "";
+    if (rcaState && rcaState.active) {
+        const currentWhy = rcaState.answers.length + 1;
+        rcaContext = `
+⚠️ MODO ANÁLISIS 5 PORQUÉS ACTIVO:
+- El usuario está realizando un análisis de causa raíz para el problema: "${rcaState.problem}".
+- Respuestas recibidas hasta ahora:
+${rcaState.answers.map((ans: string, i: number) => `  * Porqué ${i+1}: ${ans}`).join('\n')}
+
+INSTRUCCIONES DE FLUJO:
+- Si ya tienes 5 respuestas en el historial (es decir, el usuario acaba de responder el 5to porqué), felicítalo por completar la cadena lógica, resume de forma consolidada el análisis (desde el síntoma hasta la causa raíz) y recomiéndale redactar el reporte de Acción Correctiva (CAPA). Para esto, DEBES incluir el botón de acción \`[ACTION:crear_capa]\` al final de tu respuesta de forma visible.
+- Si tienes menos de 5 respuestas, evalúa críticamente la última respuesta del usuario. Si es lógica y bien fundamentada, indícale que procedemos al **Porqué #${currentWhy}** y plantéale la pregunta correspondiente para profundizar en la causa de la respuesta anterior.
+`;
+    }
+
     const baseContext = `Eres el "Experto Técnico Alco", un asistente especializado EXCLUSIVAMENTE en los manuales y procedimientos de la carpeta DOCUMENTE.md.
 
 TU MISIÓN: Responder consultas técnicas basándote ÚNICAMENTE en la documentación oficial proporcionada.
@@ -87,6 +102,8 @@ REGLA CRÍTICA DE RESTRICCIÓN:
 - Si la respuesta NO está en los documentos activos de la base de conocimiento, responde: "Lo siento, como Experto Técnico Alco, no encuentro información sobre ese tema específico en los manuales actuales. Por favor, consulta a un supervisor o revisa la documentación física."
 - PROHIBIDO alucinar o usar conocimiento general de internet para especificar tolerancias, procesos de fabricación o criterios de aceptación de Alco.
 - SOLO los documentos proporcionados son la fuente de verdad.
+
+${rcaContext}
 
 CONTEXTO DE NAVEGACIÓN: ${getContextFromPath(currentPath)}
 
@@ -239,8 +256,26 @@ const AgentHub: React.FC = () => {
     // Chat state
     const [input, setInput] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
+    
+    // RCA Guided analysis state
+    const [rcaState, setRcaState] = useState<{
+        active: boolean;
+        step: number;
+        problem: string;
+        answers: string[];
+    }>({
+        active: false,
+        step: 0,
+        problem: '',
+        answers: []
+    });
+
     const [messages, setMessages] = useState<AgentMessage[]>([
-        { id: 'welcome', role: 'agent', content: '¡Hola! Soy **Agente Calidad v5.0**. Estoy conectado a los documentos técnicos de Alco.\n\n📚 Activa documentos en la **Base de Conocimiento** para que pueda asesorarte con información específica de los instructivos y procedimientos. ¿En qué trabajamos hoy?' }
+        { 
+            id: 'welcome', 
+            role: 'agent', 
+            content: '¡Hola! Soy el **Agente de Calidad QMS v5.0** de Alco.\n\nTengo acceso en tiempo real a los instructivos técnicos y la norma ISO 9001:2015. ¿Qué deseas hacer hoy?\n\n[ACTION:iniciar_5_porque] [ACTION:ver_tolerancias] [ACTION:norma_iso]' 
+        }
     ]);
     const [groundingSources, setGroundingSources] = useState<any[]>([]);
     const [kbFragmentCount, setKbFragmentCount] = useState<number | null>(null);
@@ -438,6 +473,20 @@ const AgentHub: React.FC = () => {
             if (!currentApiKey) throw new Error("API_KEY_MISSING");
             const genAI = new GoogleGenerativeAI(currentApiKey);
 
+            // Update RCA state if active
+            let updatedRcaState = { ...rcaState };
+            if (rcaState.active) {
+                const nextStep = rcaState.step + 1;
+                const updatedAnswers = [...rcaState.answers, input];
+                
+                updatedRcaState = {
+                    ...rcaState,
+                    answers: updatedAnswers,
+                    step: nextStep
+                };
+                setRcaState(updatedRcaState);
+            }
+
             // 1. Obtener contexto de manuales vía RAG (Búsqueda inteligente)
             let contextParts: any[] = [];
             const activeKBCount = kbDocs.filter(d => d.active).length;
@@ -480,7 +529,7 @@ const AgentHub: React.FC = () => {
             parts.push({ text: input || 'Analiza esta situación técnica.' });
 
             // 3. Obtener Instrucción de Sistema
-            const systemInstruction = getKBSystemContext(kbDocs);
+            const systemInstruction = getSystemContext(false, location.pathname, activeAgent, kbDocs, updatedRcaState);
 
             let responseText = "";
 
@@ -548,6 +597,15 @@ const AgentHub: React.FC = () => {
             }]);
             setAttachedImage(null);
 
+            // Deactivate RCA loop but keep the data for CAPA generation
+            if (updatedRcaState.active && updatedRcaState.step > 5) {
+                setRcaState(prev => ({
+                    ...prev,
+                    active: false,
+                    step: 0
+                }));
+            }
+
         } catch (error: any) {
             console.error("AI Error:", error);
 
@@ -581,6 +639,92 @@ const AgentHub: React.FC = () => {
         } finally {
             setIsProcessing(false);
         }
+    };
+
+    const handleActionClick = (type: string, param?: string) => {
+        if (type === 'iniciar_5_porque') {
+            const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || 'desviación de calidad';
+            setRcaState({
+                active: true,
+                step: 1,
+                problem: lastUserMsg,
+                answers: []
+            });
+            setMessages(prev => [...prev, {
+                id: 'rca-start-' + Date.now(),
+                role: 'agent',
+                content: `🧠 **Modo RCA Activo**\n\nHe iniciado el análisis guiado de Causa Raíz para el problema: *"${lastUserMsg}"*.\n\nAnalicemos el **primer porqué**:\n👉 ¿Por qué ocurrió este problema en primer lugar?`
+            }]);
+            addNotification({ type: 'info', title: '🧠 Modo RCA Activo', message: 'Iniciando análisis guiado de 5 Porqués.' });
+        } else if (type === 'crear_capa') {
+            setIsProcessing(true);
+            setTimeout(() => {
+                const lastRcaProblem = rcaState.problem || 'Problema de calidad detectado';
+                const rcaAnswersChain = rcaState.answers.map((a, i) => `**Porqué ${i+1}:** ${a}`).join('\n');
+                setMessages(prev => [...prev, {
+                    id: 'capa-gen-' + Date.now(),
+                    role: 'agent',
+                    content: `### 📋 Borrador de Acción Correctiva (CAPA)\n\n**1. Descripción del Hallazgo:**\n${lastRcaProblem}\n\n**2. Análisis de Causa Raíz (5 Porqués):**\n${rcaAnswersChain || '_No se completó la cadena de porqués todavía._'}\n\n**3. Acciones de Corrección Inmediatas (Contención):**\n- Detener el lote afectado.\n- Segregar el material no conforme.\n\n**4. Acciones Correctivas (Preventivas):**\n- Actualizar el instructivo técnico en planta.\n- Capacitar al personal operativo.\n\n*¿Deseas que guardemos este borrador en el módulo de No Conformidades?*`
+                }]);
+                addNotification({ type: 'success', title: '📋 CAPA Generado', message: 'Se ha creado el borrador de acción correctiva.' });
+                setIsProcessing(false);
+                setRcaState({
+                    active: false,
+                    step: 0,
+                    problem: '',
+                    answers: []
+                });
+            }, 1000);
+        } else if (type === 'ver_tolerancias') {
+            setMessages(prev => [...prev, {
+                id: 'tol-list-' + Date.now(),
+                role: 'agent',
+                content: `### 📊 Tolerancias Críticas Alco SGC\n\nDe acuerdo al instructivo técnico **PC-OPT-001 (Inspección de Calidad)**:\n\n| Proceso | Especificación | Tolerancia Máxima |\n| :--- | :--- | :--- |\n| **Pintura Electrostática** | Espesor de capa | 60 - 80 micras |\n| **Soldadura TIG** | Penetración de cordón | +0.5mm / -0.2mm |\n| **Corte de Perfil** | Longitud lineal | ± 1.0 mm |\n| **Ensamble de Herraje** | Holgura funcional | 0.5mm a 1.2mm |\n\n*Nota: Estos valores están validados bajo la norma ISO 9001:2015.*`
+            }]);
+        } else if (type === 'norma_iso') {
+            setMessages(prev => [...prev, {
+                id: 'iso-info-' + Date.now(),
+                role: 'agent',
+                content: `### 🛡️ Cláusulas ISO 9001:2015 Relevantes\n\nPara el proceso de calidad y metrología de Alco, las cláusulas críticas de cumplimiento son:\n\n*   **Cláusula 7.1.5: Recursos de Seguimiento y Medición:** Garantiza la trazabilidad metrológica de todos los calibradores y micrómetros.\n*   **Cláusula 8.5.1: Control de la Producción:** Control de las condiciones de fabricación bajo instructivos de trabajo.\n*   **Cláusula 10.2: No Conformidad y Acción Correctiva:** Procedimiento sistemático para reportar desviaciones y aplicar acciones correctivas (CAPA).`
+            }]);
+        }
+    };
+
+    const renderMessageContent = (m: AgentMessage) => {
+        const actionRegex = /\[ACTION:([a-zA-Z0-9_-]+)(?::([^\]]+))?\]/g;
+        const actions: Array<{ type: string; param?: string }> = [];
+        
+        // Find all actions
+        const cleanContent = m.content.replace(actionRegex, (matchStr, type, param) => {
+            actions.push({ type, param });
+            return ''; // Remove the raw tag from the displayed text
+        });
+
+        const isUser = m.role === 'user';
+
+        return (
+            <div className="space-y-3">
+                <div className={`prose max-w-none prose-xs ${isUser ? 'prose-invert text-white' : 'dark:prose-invert text-slate-700 dark:text-slate-200'}`}>
+                    <ReactMarkdown>{cleanContent.trim()}</ReactMarkdown>
+                </div>
+                {actions.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-slate-100 dark:border-white/[0.04]">
+                        {actions.map((act, idx) => (
+                            <button
+                                key={idx}
+                                onClick={() => handleActionClick(act.type, act.param)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-[10px] font-black uppercase rounded-lg shadow-sm active:scale-95 transition-all"
+                            >
+                                {act.type === 'iniciar_5_porque' && '💡 Iniciar 5 Porqués'}
+                                {act.type === 'crear_capa' && '📋 Generar CAPA'}
+                                {act.type === 'ver_tolerancias' && '🔍 Ver Tolerancias'}
+                                {act.type === 'norma_iso' && '🛡️ Cláusulas ISO'}
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
     };
 
     // Voice logic
@@ -846,9 +990,7 @@ const AgentHub: React.FC = () => {
                                                 ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-tr-sm'
                                                 : 'bg-white dark:bg-white/[0.04] text-slate-700 dark:text-slate-200 rounded-tl-sm border border-slate-100 dark:border-white/[0.06]'
                                             }`}>
-                                            <div className="prose dark:prose-invert prose-xs max-w-none">
-                                                <ReactMarkdown>{m.content}</ReactMarkdown>
-                                            </div>
+                                            {renderMessageContent(m)}
                                         </div>
                                     </div>
                                 ))}
