@@ -33,11 +33,7 @@ function addHeader(doc: jsPDF, title: string, subtitle: string, docId: string) {
     // Subtitle right-aligned
     doc.setFontSize(7);
     doc.setFont('helvetica', 'normal');
-    doc.text('Sistema de Gestión de Calidad · SGC', pageW - 14, 10, { align: 'right' });
-
-    // Doc ID right (with cardinal prefix N°)
-    doc.setFontSize(7);
-    doc.text(`ID: N° ${docId}`, pageW - 14, 16, { align: 'right' });
+    doc.text('Sistema de Gestión de Calidad · SGC', pageW - 14, 13, { align: 'right' });
 
     // Title block
     doc.setTextColor(...DARK);
