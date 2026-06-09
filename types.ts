@@ -150,6 +150,8 @@ export interface MetrologyItem {
     marca: string;
     cantidad: number;
     observaciones: string;
+    codigo?: string;
+    longitud?: string;
 }
 
 export interface MetrologyRecord {
@@ -487,4 +489,76 @@ export interface EmailLog {
     triggeredBy?: string;
     ruleId?: string;
     createdAt: string;
+}
+
+// ─── Módulo: Instructivos de Diseños ──────────────────────────────────────────
+
+export type InstructivoEstado = 'Borrador' | 'En Revisión' | 'Aprobado' | 'Obsoleto';
+export type EvidenciaTipo = 'Foto' | 'Medición' | 'Firma';
+export type FrecuenciaTipo = 'Cada unidad' | 'Por lote' | 'Al inicio' | 'Aleatorio';
+export type SeveridadTipo = 'Menor' | 'Mayor' | 'Crítica';
+
+export interface InspeccionCriterion {
+    id: string;
+    numero: number;
+    puntoControl: string;
+    descripcion: string;
+    criterioAceptacion: string;
+    criterioRechazo: string;
+    tipoDefecto: string;
+    accionNC: string;
+    frecuencia: FrecuenciaTipo;
+    evidenciaRequerida: EvidenciaTipo[];
+    observacion?: string;
+}
+
+export interface ComponenteDefecto {
+    id: string;
+    componente: string;
+    defectosPosibles: string[];
+    severidad: SeveridadTipo;
+    observacion?: string;
+}
+
+export interface MaterialItem {
+    id: string;
+    nombre: string;
+    especificacion: string;
+    area: string;
+}
+
+export interface VersionHistorial {
+    version: string;
+    fecha: string;
+    descripcion: string;
+    autor: string;
+}
+
+export interface InstructivoDiseño {
+    id: string;
+    codigo: string;
+    version: string;
+    nombreDiseno: string;
+    nombrePersonalizado: string;
+    areasAplicacion: string[];
+    elaboradoPor: string;
+    revisadoPor: string;
+    aprobadoPor: string;
+    fechaCreacion: string;
+    vigenciaHasta: string;
+    estado: InstructivoEstado;
+    objetivo: string;
+    imagenReferencia?: string;
+    descripcionSistema: string;
+    materiales: MaterialItem[];
+    equiposInspeccion: string[];
+    criterios: InspeccionCriterion[];
+    componentesDefectos: ComponenteDefecto[];
+    observacionesGenerales?: string;
+    firmaElaborado?: string;
+    firmaRevisado?: string;
+    firmaAprobado?: string;
+    historialVersiones: VersionHistorial[];
+    createdAt: string;
+    updatedAt?: string;
 }

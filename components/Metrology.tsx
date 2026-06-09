@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import Breadcrumbs from './Breadcrumbs';
 import {
     METROLOGY_MARCAS, METROLOGY_MEDIDAS, METROLOGY_SECCIONES,
@@ -47,6 +48,11 @@ const Metrology: React.FC = () => {
     const [records, setRecords] = useState<MetrologyRecord[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const location = useLocation();
+    useEffect(() => {
+        const incoming = (location.state as any)?.q;
+        if (incoming) setSearchTerm(incoming);
+    }, [location.key]);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [viewingRecord, setViewingRecord] = useState<MetrologyRecord | null>(null);
 
@@ -55,7 +61,9 @@ const Metrology: React.FC = () => {
         equipoNombre: '',
         marca: '',
         cantidad: 1,
-        observaciones: ''
+        observaciones: '',
+        codigo: '',
+        longitud: ''
     };
 
     const INITIAL_DATA: MetrologyRecord = {
@@ -405,6 +413,21 @@ const Metrology: React.FC = () => {
                                             <div className="md:col-span-5"><label className={labelStyles}>Nombre Herramienta / Equipo</label><input value={item.equipoNombre} onChange={e => handleItemChange(index, 'equipoNombre', e.target.value)} className={inputStyles} /></div>
                                             <div className="md:col-span-4"><label className={labelStyles}>Marca</label><select value={item.marca} onChange={e => handleItemChange(index, 'marca', e.target.value)} className={inputStyles}><option value="">SELECCIONE...</option>{METROLOGY_MARCAS.map(m => <option key={m}>{m}</option>)}</select></div>
                                             <div className="md:col-span-2"><label className={labelStyles}>Cant</label><input type="number" min="1" value={item.cantidad} onChange={e => handleItemChange(index, 'cantidad', parseInt(e.target.value))} className={inputStyles} /></div>
+                                            
+                                            <div className="md:col-span-6 pl-0 md:pl-[4.5rem]">
+                                                <label className={labelStyles}>Código</label>
+                                                <input value={item.codigo || ''} onChange={e => handleItemChange(index, 'codigo', e.target.value)} placeholder="Ej: FLEX-08-05" className={inputStyles} />
+                                            </div>
+                                            <div className="md:col-span-6">
+                                                <label className={labelStyles}>Longitud</label>
+                                                <select value={item.longitud || ''} onChange={e => handleItemChange(index, 'longitud', e.target.value)} className={inputStyles}>
+                                                    <option value="">SELECCIONE...</option>
+                                                    <option value="5">5</option>
+                                                    <option value="8 m">8 m</option>
+                                                    <option value="40 m">40 m</option>
+                                                </select>
+                                            </div>
+
                                             <div className="md:col-span-12 pl-0 md:pl-[4.5rem]">
                                                 <label className={labelStyles}>Observaciones</label>
                                                 <input list={`obs-list-${index}`} value={item.observaciones} onChange={e => handleItemChange(index, 'observaciones', e.target.value)} placeholder="Estado del equipo..." className={inputStyles} />
@@ -499,12 +522,11 @@ const Metrology: React.FC = () => {
                                     <td className="px-8 py-6 font-mono text-xs font-bold"><p className="text-slate-400 mb-1">{r.fecha}</p><span className="text-sky-600 uppercase bg-sky-50 dark:bg-sky-900/30 px-2 py-0.5 rounded">{r.id}</span></td>
                                     <td className="px-6 py-6">
                                         <p className="font-black text-xs uppercase text-slate-800 dark:text-white">{r.receptorNombre}</p>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">{r.receptorCargo}</p>
                                     </td>
                                     <td className="px-6 py-6">
                                         {r.items.map((item, idx) => (
                                             <div key={idx} className="mb-2 last:mb-0">
-                                                <p className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300">• {item.cantidad}x {item.equipoNombre}</p>
+                                                <p className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300">• {item.cantidad}x {item.equipoNombre} {item.codigo ? `(${item.codigo})` : ''} {item.longitud ? `[${item.longitud}]` : ''}</p>
                                                 <p className="text-[9px] uppercase text-slate-500 pl-2">{item.marca} - {item.observaciones.substring(0, 25)}...</p>
                                             </div>
                                         ))}
@@ -568,10 +590,9 @@ const Metrology: React.FC = () => {
                         {/* Receptor */}
                         <div className="bg-sky-50 dark:bg-sky-900/10 rounded-2xl p-6 border border-sky-100 dark:border-sky-700/20">
                             <p className="text-[9px] font-black text-sky-500 uppercase tracking-[0.2em] mb-4">👤 Datos del Receptor</p>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div><p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Nombre</p><p className="text-xs font-black text-slate-800 dark:text-white uppercase">{viewingRecord.receptorNombre}</p></div>
                                 <div><p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Cédula</p><p className="text-xs font-black text-slate-800 dark:text-white">{viewingRecord.receptorCedula}</p></div>
-                                <div><p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Cargo</p><p className="text-xs font-black text-slate-800 dark:text-white uppercase">{viewingRecord.receptorCargo}</p></div>
                             </div>
                         </div>
 
@@ -584,7 +605,11 @@ const Metrology: React.FC = () => {
                                         <span className="w-7 h-7 rounded-xl bg-sky-600 text-white text-[10px] font-black flex items-center justify-center flex-shrink-0">{idx + 1}</span>
                                         <div className="flex-1 min-w-0">
                                             <p className="text-xs font-black text-slate-800 dark:text-white uppercase">{item.cantidad}x {item.equipoNombre}</p>
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{item.marca}</p>
+                                            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-0.5">
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase">{item.marca}</span>
+                                                {item.codigo && <span className="text-[10px] font-bold text-sky-600 bg-sky-50 dark:bg-sky-950/40 px-1.5 py-0.2 rounded font-mono">Cód: {item.codigo}</span>}
+                                                {item.longitud && <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.2 rounded">Long: {item.longitud}</span>}
+                                            </div>
                                             <p className="text-[10px] text-slate-500 mt-1">{item.observaciones}</p>
                                         </div>
                                     </div>

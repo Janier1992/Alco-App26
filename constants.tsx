@@ -1,6 +1,6 @@
 
 import React from 'react';
-import type { NavItem, Document, ProductLot, Column, SupervisorTask, OperationalInsight } from './types';
+import type { NavItem, Column } from './types';
 
 // Iconos
 // Iconos
@@ -60,8 +60,6 @@ export const ImageIcon: React.FC<{ className?: string }> = ({ className }) => <i
 export const BrainIcon: React.FC<{ className?: string }> = ({ className }) => <i className={`fas fa-brain w-5 h-5 ${className || ''}`}></i>;
 export const ChevronLeftIcon: React.FC<{ className?: string }> = ({ className }) => <i className={`fas fa-chevron-left w-5 h-5 ${className || ''}`}></i>;
 export const ChevronRightIcon: React.FC<{ className?: string }> = ({ className }) => <i className={`fas fa-chevron-right w-5 h-5 ${className || ''}`}></i>;
-export const MovieIcon: React.FC<{ className?: string }> = ({ className }) => <i className={`fas fa-film w-5 h-5 ${className || ''}`}></i>;
-export const MagicIcon: React.FC<{ className?: string }> = ({ className }) => <i className={`fas fa-sparkles w-5 h-5 ${className || ''}`}></i>;
 export const SparklesIcon: React.FC<{ className?: string }> = ({ className }) => <i className={`fas fa-sparkles w-5 h-5 ${className || ''}`}></i>;
 export const UserShieldIcon: React.FC<{ className?: string }> = ({ className }) => <i className={`fas fa-user-shield w-5 h-5 ${className || ''}`}></i>;
 export const EnvelopeOpenTextIcon: React.FC<{ className?: string }> = ({ className }) => <i className={`fas fa-envelope-open-text w-5 h-5 ${className || ''}`}></i>;
@@ -71,6 +69,7 @@ export const PencilSquareIcon: React.FC<{ className?: string }> = ({ className }
 export const TagIcon: React.FC<{ className?: string }> = ({ className }) => <i className={`fas fa-tag ${className || ''}`}></i>;
 export const ClockIcon: React.FC<{ className?: string }> = ({ className }) => <i className={`fas fa-clock ${className || ''}`}></i>;
 export const ChatIcon: React.FC<{ className?: string }> = ({ className }) => <i className={`fas fa-comments w-5 h-5 ${className || ''}`}></i>;
+export const FileEditIcon: React.FC<{ className?: string }> = ({ className }) => <i className={`fas fa-file-pen w-5 h-5 ${className || ''}`}></i>;
 
 // --- ESTRUCTURA ARQUITECTÓNICA ALCO SGC PRO ---
 export const NAV_ITEMS: NavItem[] = [
@@ -88,6 +87,7 @@ export const NAV_ITEMS: NavItem[] = [
         children: [
             { id: 'forms', label: 'Inspecciones en Campo', path: '/quality/forms', icon: ClipboardListIcon },
             { id: 'nc', label: 'No Conformidades y CAPA', path: '/quality/nc', icon: ExclamationTriangleIcon },
+            { id: 'instructivos', label: 'Instructivos de Diseños', path: '/quality/instructivos', icon: FileEditIcon },
         ],
     },
     {
@@ -221,12 +221,6 @@ export const MOCK_CHART_DATA = {
     ]
 };
 
-export const MOCK_NC = [
-    { id: 'NC-24-089', title: 'Desviación dimensional en lote A-102.', process: 'Auditoría Interna', project: 'Alco Project A', severity: 'Crítica', status: 'Abierta', createdAt: '2024-07-20', actions: [], description: 'Dimensional deviation in part batch A-102 detected during incoming.' },
-    { id: 'NC-24-092', title: 'Falta de certificados de seguridad proveedor X.', process: 'Proveedores', project: 'Alco Project B', severity: 'Mayor', status: 'Abierta', createdAt: '2024-07-21', actions: [], description: 'Missing safety certifications for new chemical reagent supplier.' },
-    { id: 'NC-24-075', title: 'Fallo software etiquetado L4.', process: 'Producción', project: 'Alco Project C', severity: 'Menor', status: 'CAPA', createdAt: '2024-07-15', actions: [], description: 'Labeling software crashing intermittently on Line 4.' }
-];
-
 export const METROLOGY_MARCAS = ['STANLEY', 'LUFKIN', 'BOSH', 'DEWALT', 'WURTH'];
 export const METROLOGY_MEDIDAS = ['0-150mm', '0-25mm', '12"', '3m', '5m', '8m', 'Humboldt', '30m', '50m'];
 export const METROLOGY_SECCIONES = [
@@ -275,19 +269,6 @@ export const AVAILABLE_LABELS = [
     { id: '1', name: 'CALIDAD', color: 'red' }, { id: '2', name: 'PLANTA', color: 'blue' }, { id: '3', name: 'URGENTE', color: 'orange' }
 ];
 
-export const MOCK_DOCUMENTS: Document[] = [
-    {
-        id: '1', name: 'Manual de Calidad ISO 9001:2015', code: 'MC-ALCO-01', category: 'Manuales',
-        date: '2024-01-15', validUntil: '2025-01-15', size: '2.4 MB', version: 'V3.2', status: 'Aprobado',
-        author: 'Ing. Elena Rivas', approvedBy: 'Gerencia Técnica'
-    },
-    {
-        id: '2', name: 'Instructivo Corte Perfilería Serie 80', code: 'IT-PR-02', category: 'Instructivos',
-        date: '2023-11-02', validUntil: '2024-11-02', size: '1.1 MB', version: 'V1.0', status: 'Aprobado',
-        author: 'Supervisor Planta', approvedBy: 'Calidad'
-    }
-];
-
 export const MAINTENANCE_COLUMNS: { [key: string]: Column } = {
     todo: {
         id: 'todo',
@@ -314,181 +295,3 @@ export const INITIAL_MAINTENANCE_TASKS = [
     ...MAINTENANCE_COLUMNS.in_progress.tasks,
     ...MAINTENANCE_COLUMNS.done.tasks
 ];
-
-export const MOCK_LOTS: ProductLot[] = [
-    {
-        id: 'LT-2024-001',
-        productName: 'Ventana Serie 80 Gris Titanio',
-        creationDate: '2024-07-15',
-        currentStage: 'Empaque',
-        history: [
-            { id: 'H1', stage: 'Corte', timestamp: '2024-07-15 08:00', details: 'Perfiles cortados según plano PL-TH.', operator: 'Juan Perez', status: 'OK' },
-            { id: 'H2', stage: 'Mecanizado', timestamp: '2024-07-15 10:30', details: 'Perforaciones para cerradura ejecutadas.', operator: 'Carlos Ruiz', status: 'OK' },
-            { id: 'H3', stage: 'Pintura', timestamp: '2024-07-16 09:00', details: 'Acabado Gris Titanio 65 micras.', operator: 'Roberto Mendez', status: 'OK' }
-        ]
-    },
-    {
-        id: 'LT-2024-002',
-        productName: 'Puerta Corrediza Monumental',
-        creationDate: '2024-07-18',
-        currentStage: 'Pintura',
-        history: [
-            { id: 'H4', stage: 'Corte', timestamp: '2024-07-18 08:00', details: 'Perfiles cortados.', operator: 'Juan Perez', status: 'OK' }
-        ]
-    }
-];
-
-export const MOCK_WASTE_DATA = [
-    { id: '1', date: '2024-07-01', type: 'Aluminio (Retal)', quantityKg: 450, disposalMethod: 'Reciclaje Externo', certificate: 'CERT-AL-001' },
-    { id: '2', date: '2024-07-05', type: 'Vidrio (Cera)', quantityKg: 320, disposalMethod: 'Reciclaje Externo', certificate: 'CERT-VI-088' },
-    { id: '3', date: '2024-07-10', type: 'Residuos Peligrosos', quantityKg: 25, disposalMethod: 'Incineración Controlada', certificate: 'HAZ-2024-X' },
-    { id: '4', date: '2024-07-15', type: 'Cartón/Plástico', quantityKg: 180, disposalMethod: 'Reciclaje Interno', certificate: '' }
-];
-
-export const MOCK_MAINT_KPIS = {
-    mttr: [
-        { name: 'Sem 1', value: 4.5 },
-        { name: 'Sem 2', value: 3.8 },
-        { name: 'Sem 3', value: 5.2 },
-        { name: 'Sem 4', value: 3.2 }
-    ],
-    preventiveCompliance: 88,
-    waterConsumption: [
-        { name: 'Lunes', value: 12 },
-        { name: 'Martes', value: 15 },
-        { name: 'Miércoles', value: 10 },
-        { name: 'Jueves', value: 18 },
-        { name: 'Viernes', value: 14 }
-    ]
-};
-
-export const MOCK_SUPERVISOR_TASKS: SupervisorTask[] = [
-    {
-        id: 'T1', title: 'Validar Espesor Pintura Lote G-90', description: 'Verificar micras en 5 puntos aleatorios de la perfilería.',
-        priority: 'High', status: 'Pending', estimatedTime: '15 min',
-        isoReference: { clause: '8.5.1', explanation: 'El control de la producción asegura que las salidas cumplen los requisitos.' }
-    },
-    {
-        id: 'T2', title: 'Checklist Seguridad Sierra L2', description: 'Confirmar que las guardas y paradas de emergencia estén funcionales.',
-        priority: 'High', status: 'Pending', estimatedTime: '10 min',
-        isoReference: { clause: '7.1.3', explanation: 'La infraestructura debe mantenerse para asegurar la conformidad del producto.' }
-    }
-];
-
-export const MOCK_INSIGHTS: OperationalInsight[] = [
-    { id: 'I1', title: 'Descuadre en Ensamble', description: 'Se detectó desviación de 2mm en esquinas superiores.', frequency: '3 veces/semana', correction: 'Ajustar presión de prensas neumáticas.' },
-    { id: 'I2', title: 'Burbujas en Sellado', description: 'Aire atrapado en cordones de silicona perimetral.', frequency: '2 veces/semana', correction: 'Limpiar boquillas y reducir velocidad de aplicación.' }
-];
-
-export const MOCK_PREDICTIVE_METRICS = Array.from({ length: 20 }, (_, i) => ({
-    timestamp: `${10 + Math.floor(i / 2)}:${(i % 2) * 30 === 0 ? '00' : '30'}`,
-    value: 40 + Math.random() * 30,
-    threshold: 80,
-    predicted: i > 15
-}));
-
-export const MOCK_COLLABORATORS = [
-    { id: '1', name: 'Ana Gómez', role: 'Calidad', status: 'online', avatar: 'AG' },
-    { id: '2', name: 'Carlos Ruiz', role: 'Producción', status: 'busy', avatar: 'CR' },
-    { id: '3', name: 'Lucía Fernández', role: 'Diseño', status: 'away', avatar: 'LF' },
-    { id: '4', name: 'Miguel Torres', role: 'Logística', status: 'online', avatar: 'MT' },
-    { id: '5', name: 'Elena Rivas', role: 'Ingeniería', status: 'offline', avatar: 'ER' },
-];
-
-export const MOCK_RECENT_ACTIVITIES = [
-    { id: 'a1', user: 'Ana Gómez', action: 'Aprobó Lote L-204', time: 'Hace 5 min', type: 'success' },
-    { id: 'a2', user: 'Carlos Ruiz', action: 'Reportó Falla en Línea 2', time: 'Hace 12 min', type: 'error' },
-    { id: 'a3', user: 'Lucía Fernández', action: 'Actualizó Plano P-88', time: 'Hace 45 min', type: 'info' },
-    { id: 'a4', user: 'Miguel Torres', action: 'Inició Despacho D-99', time: 'Hace 1 hora', type: 'warning' },
-    { id: 'a5', user: 'Sistema', action: 'Backup Completado', time: 'Hace 2 horas', type: 'info' },
-];
-
-// --- MOCK DATA: Mensajería ---
-import type { Conversation, ChatMessage } from './types';
-
-export const MOCK_CONVERSATIONS: Conversation[] = [
-    {
-        id: 'conv-1', type: 'direct', title: 'Ana Gómez',
-        participants: [
-            { userId: '1', username: 'Inspector', role: 'Quality Inspector', isOnline: true, isTyping: false, avatar: 'IN' },
-            { userId: 'c1', username: 'Ana Gómez', role: 'Calidad', isOnline: true, isTyping: false, avatar: 'AG' },
-        ],
-        unreadCount: 3, createdAt: '2026-02-23T08:00:00',
-        lastMessage: { id: 'm3', conversationId: 'conv-1', senderId: 'c1', senderName: 'Ana Gómez', content: '¿Ya revisaste el lote G-90? Necesito tu aprobación.', type: 'text', createdAt: '2026-02-23T11:25:00', readBy: ['c1'], readStatus: 'delivered' },
-    },
-    {
-        id: 'conv-2', type: 'group', title: 'Equipo Calidad ISO',
-        participants: [
-            { userId: '1', username: 'Inspector', role: 'Quality Inspector', isOnline: true, isTyping: false, avatar: 'IN' },
-            { userId: 'c1', username: 'Ana Gómez', role: 'Calidad', isOnline: true, isTyping: false, avatar: 'AG' },
-            { userId: 'c2', username: 'Carlos Ruiz', role: 'Producción', isOnline: false, isTyping: false, avatar: 'CR' },
-            { userId: 'c4', username: 'Miguel Torres', role: 'Logística', isOnline: true, isTyping: false, avatar: 'MT' },
-        ],
-        unreadCount: 0, createdAt: '2026-02-20T09:00:00',
-        lastMessage: { id: 'm10', conversationId: 'conv-2', senderId: 'c4', senderName: 'Miguel Torres', content: 'Adjunté el reporte de la auditoría interna.', type: 'text', createdAt: '2026-02-23T10:45:00', readBy: ['c4', '1', 'c1'], readStatus: 'read' },
-    },
-    {
-        id: 'conv-3', type: 'module-linked', title: 'NC-24-089: Desviación dimensional',
-        participants: [
-            { userId: '1', username: 'Inspector', role: 'Quality Inspector', isOnline: true, isTyping: false, avatar: 'IN' },
-            { userId: 'c2', username: 'Carlos Ruiz', role: 'Producción', isOnline: false, isTyping: false, avatar: 'CR' },
-        ],
-        unreadCount: 1, createdAt: '2026-02-22T14:00:00',
-        moduleRef: { moduleType: 'nc', moduleId: 'NC-24-089', moduleTitle: 'Desviación dimensional en lote A-102' },
-        lastMessage: { id: 'm20', conversationId: 'conv-3', senderId: 'c2', senderName: 'Carlos Ruiz', content: 'Revisé las muestras, confirmo la desviación de 2mm.', type: 'text', createdAt: '2026-02-23T09:30:00', readBy: ['c2'], readStatus: 'delivered' },
-    },
-    {
-        id: 'conv-4', type: 'direct', title: 'Miguel Torres',
-        participants: [
-            { userId: '1', username: 'Inspector', role: 'Quality Inspector', isOnline: true, isTyping: false, avatar: 'IN' },
-            { userId: 'c4', username: 'Miguel Torres', role: 'Logística', isOnline: true, isTyping: false, avatar: 'MT' },
-        ],
-        unreadCount: 0, createdAt: '2026-02-21T16:00:00',
-        lastMessage: { id: 'm30', conversationId: 'conv-4', senderId: '1', senderName: 'Inspector', content: 'Perfecto, coordino con despacho.', type: 'text', createdAt: '2026-02-22T17:00:00', readBy: ['1', 'c4'], readStatus: 'read' },
-    },
-    {
-        id: 'conv-5', type: 'group', title: 'Departamento Producción',
-        participants: [
-            { userId: '1', username: 'Inspector', role: 'Quality Inspector', isOnline: true, isTyping: false, avatar: 'IN' },
-            { userId: 'c2', username: 'Carlos Ruiz', role: 'Producción', isOnline: false, isTyping: false, avatar: 'CR' },
-            { userId: 'c5', username: 'Elena Rivas', role: 'Ingeniería', isOnline: false, isTyping: false, avatar: 'ER' },
-        ],
-        unreadCount: 5, createdAt: '2026-02-19T08:00:00',
-        lastMessage: { id: 'm40', conversationId: 'conv-5', senderId: 'c5', senderName: 'Elena Rivas', content: 'Actualicé los planos de la serie 80, por favor revisen.', type: 'text', createdAt: '2026-02-23T11:10:00', readBy: ['c5'], readStatus: 'sent' },
-    },
-];
-
-export const MOCK_MESSAGES: { [conversationId: string]: ChatMessage[] } = {
-    'conv-1': [
-        { id: 'm1', conversationId: 'conv-1', senderId: '1', senderName: 'Inspector', content: 'Buenos días Ana, ¿cómo va el control del lote G-90?', type: 'text', createdAt: '2026-02-23T08:15:00', readBy: ['1', 'c1'], readStatus: 'read' },
-        { id: 'm2', conversationId: 'conv-1', senderId: 'c1', senderName: 'Ana Gómez', content: 'Hola! Estoy terminando la inspección visual. Ya llevo el 80%.', type: 'text', createdAt: '2026-02-23T08:20:00', readBy: ['c1', '1'], readStatus: 'read' },
-        { id: 'm2b', conversationId: 'conv-1', senderId: '1', senderName: 'Inspector', content: 'Excelente, avísame cuando termines para la validación final.', type: 'text', createdAt: '2026-02-23T09:00:00', readBy: ['1', 'c1'], readStatus: 'read' },
-        { id: 'm2c', conversationId: 'conv-1', senderId: 'c1', senderName: 'Ana Gómez', content: 'Encontré una observación menor en 3 unidades, nada crítico. Te envío las fotos.', type: 'text', createdAt: '2026-02-23T10:30:00', readBy: ['c1', '1'], readStatus: 'read' },
-        { id: 'm2d', conversationId: 'conv-1', senderId: 'c1', senderName: 'Ana Gómez', content: 'foto_lote_g90_obs.jpg', type: 'image', createdAt: '2026-02-23T10:31:00', readBy: ['c1', '1'], readStatus: 'read', fileName: 'foto_lote_g90_obs.jpg' },
-        { id: 'm3', conversationId: 'conv-1', senderId: 'c1', senderName: 'Ana Gómez', content: '¿Ya revisaste el lote G-90? Necesito tu aprobación.', type: 'text', createdAt: '2026-02-23T11:25:00', readBy: ['c1'], readStatus: 'delivered' },
-    ],
-    'conv-2': [
-        { id: 'm5', conversationId: 'conv-2', senderId: 'c4', senderName: 'Miguel Torres', content: 'Equipo, recordar que la auditoría externa es el viernes.', type: 'text', createdAt: '2026-02-23T09:00:00', readBy: ['c4', '1', 'c1', 'c2'], readStatus: 'read' },
-        { id: 'm6', conversationId: 'conv-2', senderId: '1', senderName: 'Inspector', content: 'Entendido. Ya tengo el listado de documentación pendiente.', type: 'text', createdAt: '2026-02-23T09:15:00', readBy: ['1', 'c4', 'c1'], readStatus: 'read' },
-        { id: 'm7', conversationId: 'conv-2', senderId: 'c1', senderName: 'Ana Gómez', content: '¿Necesitan apoyo con la preparación de evidencias?', type: 'text', createdAt: '2026-02-23T09:30:00', readBy: ['c1', '1', 'c4'], readStatus: 'read' },
-        { id: 'm8', conversationId: 'conv-2', senderId: 'c2', senderName: 'Carlos Ruiz', content: 'Sí, por favor. Las NC abiertas necesitan actualización de estado.', type: 'text', createdAt: '2026-02-23T10:00:00', readBy: ['c2', '1', 'c1', 'c4'], readStatus: 'read' },
-        { id: 'm10', conversationId: 'conv-2', senderId: 'c4', senderName: 'Miguel Torres', content: 'Adjunté el reporte de la auditoría interna.', type: 'text', createdAt: '2026-02-23T10:45:00', readBy: ['c4', '1', 'c1'], readStatus: 'read' },
-    ],
-    'conv-3': [
-        { id: 'm15', conversationId: 'conv-3', senderId: '1', senderName: 'Inspector', content: 'Carlos, detectamos la desviación en el lote A-102. ¿Puedes verificar en planta?', type: 'text', createdAt: '2026-02-22T14:00:00', readBy: ['1', 'c2'], readStatus: 'read' },
-        { id: 'm16', conversationId: 'conv-3', senderId: 'c2', senderName: 'Carlos Ruiz', content: 'Voy a revisar. ¿En qué puntos encontraste la desviación?', type: 'text', createdAt: '2026-02-22T14:30:00', readBy: ['c2', '1'], readStatus: 'read' },
-        { id: 'm17', conversationId: 'conv-3', senderId: '1', senderName: 'Inspector', content: 'En los puntos de medición 2 y 4. La tolerancia es ±1mm y encontramos +2.1mm.', type: 'text', createdAt: '2026-02-22T15:00:00', readBy: ['1', 'c2'], readStatus: 'read' },
-        { id: 'm20', conversationId: 'conv-3', senderId: 'c2', senderName: 'Carlos Ruiz', content: 'Revisé las muestras, confirmo la desviación de 2mm.', type: 'text', createdAt: '2026-02-23T09:30:00', readBy: ['c2'], readStatus: 'delivered' },
-    ],
-    'conv-4': [
-        { id: 'm25', conversationId: 'conv-4', senderId: 'c4', senderName: 'Miguel Torres', content: 'Inspector, el despacho D-99 sale mañana. ¿Confirmamos calidad?', type: 'text', createdAt: '2026-02-22T16:00:00', readBy: ['c4', '1'], readStatus: 'read' },
-        { id: 'm30', conversationId: 'conv-4', senderId: '1', senderName: 'Inspector', content: 'Perfecto, coordino con despacho.', type: 'text', createdAt: '2026-02-22T17:00:00', readBy: ['1', 'c4'], readStatus: 'read' },
-    ],
-    'conv-5': [
-        { id: 'm35', conversationId: 'conv-5', senderId: 'c2', senderName: 'Carlos Ruiz', content: 'Equipo, hay un cambio en la línea de producción serie 80.', type: 'text', createdAt: '2026-02-23T08:00:00', readBy: ['c2'], readStatus: 'sent' },
-        { id: 'm36', conversationId: 'conv-5', senderId: 'c5', senderName: 'Elena Rivas', content: '¿Qué tipo de cambio? ¿Afecta los planos actuales?', type: 'text', createdAt: '2026-02-23T08:30:00', readBy: ['c5', 'c2'], readStatus: 'read' },
-        { id: 'm37', conversationId: 'conv-5', senderId: 'c2', senderName: 'Carlos Ruiz', content: 'Sí, necesitamos actualizar la especificación de corte.', type: 'text', createdAt: '2026-02-23T09:00:00', readBy: ['c2', 'c5'], readStatus: 'read' },
-        { id: 'm38', conversationId: 'conv-5', senderId: '1', senderName: 'Inspector', content: 'Avísenme cuando estén listos los planos nuevos para validar.', type: 'text', createdAt: '2026-02-23T10:00:00', readBy: ['1'], readStatus: 'sent' },
-        { id: 'm40', conversationId: 'conv-5', senderId: 'c5', senderName: 'Elena Rivas', content: 'Actualicé los planos de la serie 80, por favor revisen.', type: 'text', createdAt: '2026-02-23T11:10:00', readBy: ['c5'], readStatus: 'sent' },
-    ],
-};

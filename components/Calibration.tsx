@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import Breadcrumbs from './Breadcrumbs';
 import EmptyState from './EmptyState';
 import {
@@ -71,6 +72,11 @@ const Calibration: React.FC = () => {
     const { confirm } = useConfirmDialog();
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const location = useLocation();
+    useEffect(() => {
+        const incoming = (location.state as any)?.q;
+        if (incoming) setSearchTerm(incoming);
+    }, [location.key]);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [records, setRecords] = useState<CalibrationRecord[]>([]);

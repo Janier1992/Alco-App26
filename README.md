@@ -45,9 +45,9 @@ Este proyecto utiliza una arquitectura moderna y escalable (MACH):
 - **PWA:** Soporte offline con `vite-plugin-pwa`.
 
 ### Backend & Servicios
-- **Base de Datos & Auth:** [Supabase](https://supabase.com/) (PostgreSQL + Gotrue)
-- **IA Generativa:** [Google GenAI SDK](https://ai.google.dev/) (Gemini Models)
-- **Iconos:** Heroicons
+- **Base de Datos, Auth y Storage:** [InsForge](https://insforge.dev/) (PostgreSQL + PostgREST, autenticación y almacenamiento) vía `@insforge/sdk`
+- **IA Generativa:** [Google Generative AI SDK](https://ai.google.dev/) (modelos Gemini)
+- **Iconos:** Font Awesome 6
 
 ## 📦 Instalación y Despliegue
 
@@ -69,7 +69,12 @@ Este proyecto utiliza una arquitectura moderna y escalable (MACH):
     ```
 
 3.  **Configurar variables de entorno:**
-    Crea un archivo `.env` en la raíz basado en `.env.local` y añade tus credenciales de Supabase y Google GenAI.
+    Crea un archivo `.env` en la raíz con tus credenciales de InsForge y Google Gemini:
+    ```env
+    VITE_INSFORGE_URL=https://tu-proyecto.region.insforge.app
+    VITE_INSFORGE_ANON_KEY=tu_anon_key
+    VITE_GEMINI_API_KEY=tu_api_key_de_gemini
+    ```
 
 4.  **Iniciar el servidor de desarrollo:**
     ```bash

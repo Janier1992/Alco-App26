@@ -1,6 +1,7 @@
 
 
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import type { NonConformity, NCSeverity, NCStatus, CAPAAction } from '../types';
 import Breadcrumbs from './Breadcrumbs';
 import {
@@ -72,6 +73,11 @@ const NonConformities: React.FC = () => {
     const [isActionModalOpen, setIsActionModalOpen] = useState(false);
     const [isGeneratingAI, setIsGeneratingAI] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const location = useLocation();
+    useEffect(() => {
+        const incoming = (location.state as any)?.q;
+        if (incoming) setSearchTerm(incoming);
+    }, [location.key]);
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
 

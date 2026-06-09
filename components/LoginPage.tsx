@@ -135,12 +135,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     };
 
     return (
-        <div className="min-h-screen w-full bg-[#060a14] text-slate-200 flex items-center justify-center p-4 font-sans relative overflow-hidden">
+        <div className="min-h-screen w-full bg-gradient-to-br from-[#15375f] via-[#0f2a4a] to-[#1d4d84] text-slate-200 flex items-center justify-center p-4 font-sans relative overflow-hidden">
             {/* Animated Mesh Gradient Background with floating orbital light auras and Quality Assurance particles */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
                 {/* Smooth fluid shifting atmospheric gas-glow auroras */}
-                <div className="absolute w-[650px] h-[650px] top-[-20%] left-[-15%] bg-indigo-600/10 rounded-full blur-[140px] animate-float-glow-1"></div>
-                <div className="absolute w-[550px] h-[550px] bottom-[-20%] right-[-15%] bg-violet-600/10 rounded-full blur-[140px] animate-float-glow-2"></div>
+                <div className="absolute w-[650px] h-[650px] top-[-20%] left-[-15%] bg-sky-300/20 rounded-full blur-[140px] animate-float-glow-1"></div>
+                <div className="absolute w-[550px] h-[550px] bottom-[-20%] right-[-15%] bg-blue-200/15 rounded-full blur-[140px] animate-float-glow-2"></div>
                 <div className="absolute w-[450px] h-[450px] top-[30%] left-[45%] -translate-x-1/2 bg-emerald-500/5 rounded-full blur-[120px] animate-float-glow-3"></div>
                 
                 {/* Interactive cursor follow spotlight */}
@@ -302,9 +302,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                     {/* Header Branding */}
                     <div className="mb-10 text-center relative z-10">
                         <div className="relative inline-block mb-6 group cursor-pointer">
-                            {/* Sleek icon shape with shadow glow */}
-                            <div className="w-16 h-16 bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-600 rounded-[1.25rem] flex items-center justify-center shadow-2xl shadow-indigo-500/30 mx-auto border border-white/10 group-hover:scale-105 active:scale-95 transition-all duration-300">
-                                <i className="fas fa-layer-group text-white text-2xl"></i>
+                            {/* Logo corporativo Alco sobre lámina blanca para máxima legibilidad */}
+                            <div className="bg-white rounded-2xl px-6 py-4 flex items-center justify-center shadow-2xl shadow-indigo-500/30 mx-auto border border-white/10 group-hover:scale-105 active:scale-95 transition-all duration-300">
+                                <img
+                                    src={`${import.meta.env.BASE_URL}logo.png`}
+                                    alt="Alco Windows & Doors"
+                                    className="h-12 w-auto object-contain"
+                                />
                             </div>
                             {/* Double halo pulsing rings */}
                             <div className="absolute -inset-2 bg-indigo-500/20 rounded-[1.5rem] blur-xl -z-10 opacity-70 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500 animate-pulse"></div>

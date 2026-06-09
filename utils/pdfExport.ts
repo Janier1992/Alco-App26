@@ -169,8 +169,7 @@ export function exportMetrologyToPDF(record: MetrologyRecord) {
     y = addInfoGrid(doc, [
         { label: 'Nombre y Apellidos', value: record.receptorNombre },
         { label: 'Cédula', value: record.receptorCedula },
-        { label: 'Cargo', value: record.receptorCargo },
-    ], y, 3);
+    ], y, 2);
 
     y += 4;
 
@@ -180,13 +179,20 @@ export function exportMetrologyToPDF(record: MetrologyRecord) {
     autoTable(doc, {
         startY: y,
         head: [['#', 'Equipo / Herramienta', 'Marca', 'Cant.', 'Observaciones']],
-        body: record.items.map((item, i) => [
-            String(i + 1),
-            item.equipoNombre,
-            item.marca,
-            String(item.cantidad),
-            item.observaciones,
-        ]),
+        body: record.items.map((item, i) => {
+            const nameWithDetails = [
+                item.equipoNombre,
+                item.codigo ? `(Cód: ${item.codigo})` : '',
+                item.longitud ? `[Long: ${item.longitud}]` : ''
+            ].filter(Boolean).join(' ');
+            return [
+                String(i + 1),
+                nameWithDetails,
+                item.marca,
+                String(item.cantidad),
+                item.observaciones,
+            ];
+        }),
         theme: 'grid',
         styles: { fontSize: 7.5, cellPadding: 3, font: 'helvetica', textColor: DARK },
         headStyles: { fillColor: BRAND_COLOR, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
